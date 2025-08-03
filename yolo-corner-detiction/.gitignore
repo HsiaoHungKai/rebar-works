@@ -141,7 +141,6 @@ Temporary Items
 
 # Image processing and computer vision specific
 # Large image datasets
-rebar segment/
 data/
 dataset/
 datasets/
