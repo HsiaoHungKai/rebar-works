@@ -8,7 +8,6 @@ def get_bounding_boxes(image, model_path, threshold=0.5):
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
         model_path: Path to the YOLO model weights file
-        threshold: IoU threshold for Non-Maximum Suppression (NMS)
 
     Returns:
         numpy.ndarray: Array of bounding boxes in xyxy format
@@ -21,7 +20,7 @@ def get_bounding_boxes(image, model_path, threshold=0.5):
         device = torch.device("cpu")
 
     model = YOLO(model_path).to(device)
-    results = model(image, iou=threshold, verbose=False)
+    results = model(image, verbose=False)
 
     if results[0].boxes is not None:
         return results[0].boxes.xyxy.cpu().numpy()
