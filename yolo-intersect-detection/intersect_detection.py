@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 
-def get_bounding_boxes(image, model_path, threshold=0.5):
+def get_bounding_boxes(image, model_path):
     """
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
