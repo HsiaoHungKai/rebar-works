@@ -20,7 +20,7 @@ def get_bounding_boxes(image, model_path):
         device = torch.device("cpu")
 
     model = YOLO(model_path).to(device)
-    results = model.predict(image, conf=0.33, verbose=False)
+    results = model.predict(image, verbose=False)
 
     if results[0].boxes is not None:
         return results[0].boxes.xyxy.cpu().numpy()

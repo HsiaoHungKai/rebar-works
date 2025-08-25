@@ -185,6 +185,7 @@ temp/
 tmp/
 output/
 results/
+predict/
 logs/
 *.log
 
