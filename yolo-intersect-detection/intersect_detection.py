@@ -1,5 +1,6 @@
 from ultralytics import YOLO
 import torch
+from torchvision.ops import nms
 import numpy as np
 
 
@@ -21,9 +22,18 @@ def get_bounding_boxes(image, model_path):
 
     model = YOLO(model_path).to(device)
     results = model.predict(image, verbose=False)
+    
+    boxes = results[0].boxes  
+    scores = boxes.conf       
+    xyxy = boxes.xyxy 
+    
+    boxes_tensor = torch.tensor(xyxy)
+    scores_tensor = torch.tensor(scores)
+    keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.3)
+    filtered_boxes = boxes_tensor[keep]
 
     if results[0].boxes is not None:
-        return results[0].boxes.xyxy.cpu().numpy()
+        return filtered_boxes.cpu().numpy()
     else:
         return np.array([])
 
