@@ -27,8 +27,8 @@ def get_bounding_boxes(image, model_path):
     scores = boxes.conf       
     xyxy = boxes.xyxy 
     
-    boxes_tensor = torch.tensor(xyxy)
-    scores_tensor = torch.tensor(scores)
+    boxes_tensor = xyxy.detach().clone()
+    scores_tensor = scores.detach().clone()
     keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.3)
     filtered_boxes = boxes_tensor[keep]
 
