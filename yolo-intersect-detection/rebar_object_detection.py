@@ -1,0 +1,200 @@
+from ultralytics import YOLO
+import torch
+from torchvision.ops import nms
+import numpy as np
+import math as m
+import json
+
+
+def get_bounding_boxes(image, model_path):
+    """
+    Args:
+        image: Input image (can be file path string, numpy array, or PIL image)
+        model_path: Path to the YOLO model weights file
+
+    Returns:
+        numpy.ndarray: Array of bounding boxes in xyxy format
+    """
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    model = YOLO(model_path).to(device)
+    results = model.predict(image, verbose=False)
+
+    boxes = results[0].boxes
+    scores = boxes.conf
+    xyxy = boxes.xyxy
+
+    boxes_tensor = xyxy.detach().clone()
+    scores_tensor = scores.detach().clone()
+    keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.3)
+    filtered_boxes = boxes_tensor[keep]
+
+    if results[0].boxes is not None:
+        return filtered_boxes.cpu().numpy()
+    else:
+        return np.array([])
+
+
+def rotate(vector, angle):
+    [x, y] = vector
+    angler = angle * m.pi / 180
+    newx = x * m.cos(angler) - y * m.sin(angler)
+    newy = x * m.sin(angler) + y * m.cos(angler)
+    return [newx, newy]
+
+
+def get_cone_boundaries(vector, angle):
+    """
+    Creates a span (cone) around a given vector by rotating it by ±angle degrees.
+
+    This function takes a 2D vector and creates two boundary vectors by rotating
+    the original vector clockwise and counterclockwise by the specified angle.
+    The resulting span represents a cone or wedge shape that can be used to
+    check if other vectors fall within this angular range.
+
+    Args:
+        vector (list or np.array): A 2D vector [x, y] that serves as the center direction
+        angle (float): The rotation angle in degrees (±angle creates the span width)
+                      For example, angle=10 creates a 20-degree cone (±10°)
+
+    Returns:
+        np.array: A 2x2 matrix where:
+                 - First column: vector rotated by +angle degrees (counterclockwise)
+                 - Second column: vector rotated by -angle degrees (clockwise)
+
+    Example:
+        >>> span = get_cone_boundaries([1, 0], 30)  # 30° rotation around horizontal vector
+        >>> print(span)
+        [[    0.86603,     0.86603],
+         [        0.5,        -0.5]]
+    """
+    # Rotate the input vector by +angle degrees (counterclockwise)
+    positive_rotation = rotate(vector, angle)
+
+    # Rotate the input vector by -angle degrees (clockwise)
+    negative_rotation = rotate(vector, -angle)
+
+    # Stack the two rotated vectors vertically to form a 2x2 matrix
+    # This matrix defines the boundary vectors of the span/cone
+    return np.column_stack((positive_rotation, negative_rotation))
+
+
+def vector_aligned_with_pc(
+    vertex1, vertex2, principal_component, tolerance_angle
+) -> bool:
+    """
+    Checks if the vector between two vertices aligns with a principal component within a tolerance angle.
+
+    Args:
+        vertex1 (np.array): First vertex coordinates [x, y] (start point)
+        vertex2 (np.array): Second vertex coordinates [x, y] (end point)
+        principal_component (np.array): Principal component vector [x, y] from PCA
+        tolerance_angle (float): Angular tolerance in degrees (±tolerance creates acceptance cone)
+
+    Returns:
+        bool: True if vector from vertex1 to vertex2 is within the acceptance cone, False otherwise
+
+    Example:
+        >>> vector_aligned_with_pc([0, 0], [0.9, 0.2], [1, 0], 30)  # Check if vector is within ±30° of x-axis
+        True
+        >>> vector_aligned_with_pc([0, 0], [0.2, 0.9], [1, 0], 30)  # Vector at ~77° from x-axis
+        False
+    """
+    # Calculate the direction vector from vertex1 to vertex2
+    direction_vector = np.array(vertex2) - np.array(vertex1)
+
+    # Create the span (cone boundaries) by rotating the principal component vector ±angle degrees
+    cone = get_cone_boundaries(principal_component, tolerance_angle)
+
+    try:
+        x, y = np.linalg.solve(cone, direction_vector)
+        return x >= 0 and y >= 0
+
+    except np.linalg.LinAlgError:
+        return False
+
+
+def get_lines(image_path, model_path):
+    vertices = []
+    shapes = []
+
+    # Get bounding boxes from the image using the model
+    bounding_boxes = get_bounding_boxes(image_path, model_path)
+    vertices = []
+    for box in bounding_boxes:
+        x_center = (box[0] + box[2]) / 2
+        y_center = (box[1] + box[3]) / 2
+        vertices.append((x_center, y_center))
+    vertices = np.array(vertices)
+
+    # Remove outliers
+    mean = np.mean(vertices, axis=0)
+    std = np.std(vertices, axis=0)
+    z_scores = np.abs((vertices - mean) / std)
+    vertices = vertices[(z_scores < 3).all(axis=1)]
+
+    # PCA Alignment
+    vc = vertices - mean
+    _, _, Vh = np.linalg.svd(vc)  # Get the principal component vectors
+    pc1, pc2 = Vh[0], Vh[1]
+
+    # Find the nearest vertices in the direction of each principal component for each vertex
+    for vertex in vertices:
+        pc1_vertex = {
+            "vertex": None,
+            "distance": float("inf"),
+        }
+        pc2_vertex = {
+            "vertex": None,
+            "distance": float("inf"),
+        }
+        for other_vertex in vertices:
+            if np.array_equal(vertex, other_vertex):
+                continue
+
+            # Search for closest vertex in PC1 direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc1, 30):
+                diff = np.array(other_vertex) - np.array(vertex)
+                distance = np.linalg.norm(diff, ord=2)
+                if distance < pc1_vertex["distance"]:
+                    pc1_vertex["vertex"] = tuple(other_vertex)
+                    pc1_vertex["distance"] = distance
+
+            # Search for closest vertex in PC2 direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc2, 30):
+                diff = np.array(other_vertex) - np.array(vertex)
+                distance = np.linalg.norm(diff, ord=2)
+                if distance < pc2_vertex["distance"]:
+                    pc2_vertex["vertex"] = tuple(other_vertex)
+                    pc2_vertex["distance"] = distance
+
+        # Store the lines into shapes
+        if pc1_vertex["vertex"] is not None:
+            points = [
+                [vertex[0], vertex[1]],
+                [pc1_vertex["vertex"][0], pc1_vertex["vertex"][1]],
+            ]
+            shapes.append(
+                {
+                    "points": points,
+                    "shape_type": "line",
+                }
+            )
+        if pc2_vertex["vertex"] is not None:
+            points = [
+                [vertex[0], vertex[1]],
+                [pc2_vertex["vertex"][0], pc2_vertex["vertex"][1]],
+            ]
+            shapes.append(
+                {
+                    "points": points,
+                    "shape_type": "line",
+                }
+            )
+
+    return json.dumps({"shapes": shapes}, indent=2)
