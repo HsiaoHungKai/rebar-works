@@ -162,6 +162,8 @@ def get_lines(image, model_path) -> str:
     """
     vertices = []
     shapes = []
+    pc1_points = []
+    pc2_points = []
 
     # Get bounding boxes from the image using the model
     bounding_boxes = get_bounding_boxes(image, model_path)
@@ -219,24 +221,62 @@ def get_lines(image, model_path) -> str:
                 [vertex[0], vertex[1]],
                 [pc1_vertex["vertex"][0], pc1_vertex["vertex"][1]],
             ]
-            shapes.append(
-                {
-                    "points": points,
-                    "orientation": "pc1",
-                    "shape_type": "line",
-                }
-            )
+            pc1_points.append(points)
         if pc2_vertex["vertex"] is not None:
             points = [
                 [vertex[0], vertex[1]],
                 [pc2_vertex["vertex"][0], pc2_vertex["vertex"][1]],
             ]
-            shapes.append(
-                {
-                    "points": points,
-                    "orientation": "pc2",
-                    "shape_type": "line",
-                }
-            )
+            pc2_points.append(points)
+
+    # Remove outliers depending on the radian of vector for pc1
+    radians = np.array([])
+    for shape in pc1_points:
+        point1 = np.array(shape[0])
+        point2 = np.array(shape[1])
+
+        # Because we detect vertex using pc, so the direction will be pretty much same
+        vector = point2 - point1
+        radians = np.append(radians, np.arctan2(vector[1], vector[0]))
+
+    mean = np.mean(radians)
+    std = np.std(radians)
+    z_scores = np.abs((radians - mean) / std)
+    pc1_points = np.array(pc1_points)
+    pc1_points = pc1_points[z_scores < 1]
+
+    for points in pc1_points:
+        shapes.append(
+            {
+                "points": [[points[0][0], points[0][1]], [points[1][0], points[1][1]]],
+                "orientation": "pc1",
+                "shape_type": "line",
+            }
+        )
+
+    # Remove outliers depending on the radian of vector for pc2
+    radians = np.array([])
+    for shape in pc2_points:
+        point1 = np.array(shape[0])
+        point2 = np.array(shape[1])
+
+        # Because we detect vertex using pc, so the direction will be pretty much same
+        vector = point2 - point1
+        radians = np.append(radians, np.arctan2(vector[1], vector[0]))
+
+    mean = np.mean(radians)
+    std = np.std(radians)
+    z_scores = np.abs((radians - mean) / std)
+    pc2_points = np.array(pc2_points)
+    pc2_points = pc2_points[z_scores < 1]
+
+    for points in pc2_points:
+        shapes.append(
+            {
+                "points": [[points[0][0], points[0][1]], [points[1][0], points[1][1]]],
+                "orientation": "pc2",
+                "shape_type": "line",
+            }
+        )
 
     return json.dumps({"shapes": shapes}, indent=2)
