@@ -131,7 +131,7 @@ def vector_aligned_with_pc(
         return False
 
 
-def get_lines(image_path, model_path):
+def get_lines(image, model_path) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
@@ -144,7 +144,7 @@ def get_lines(image_path, model_path):
     6. Generates line connections between aligned vertices
 
     Args:
-        image_path (str): Path to the input image file containing rebar intersections
+        image: Input image (can be file path string, numpy array, or PIL image)
         model_path (str): Path to the trained YOLO model weights file (.pt format)
 
     Returns:
@@ -153,6 +153,7 @@ def get_lines(image_path, model_path):
                "shapes": [
                  {
                    "points": [[x1, y1], [x2, y2]],
+                   "orientation": "pc1",
                    "shape_type": "line"
                  },
                  ...
@@ -163,7 +164,7 @@ def get_lines(image_path, model_path):
     shapes = []
 
     # Get bounding boxes from the image using the model
-    bounding_boxes = get_bounding_boxes(image_path, model_path)
+    bounding_boxes = get_bounding_boxes(image, model_path)
     vertices = []
     for box in bounding_boxes:
         x_center = (box[0] + box[2]) / 2
@@ -221,6 +222,7 @@ def get_lines(image_path, model_path):
             shapes.append(
                 {
                     "points": points,
+                    "orientation": "pc1",
                     "shape_type": "line",
                 }
             )
@@ -232,6 +234,7 @@ def get_lines(image_path, model_path):
             shapes.append(
                 {
                     "points": points,
+                    "orientation": "pc2",
                     "shape_type": "line",
                 }
             )
