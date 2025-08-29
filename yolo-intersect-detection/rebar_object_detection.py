@@ -141,7 +141,8 @@ def get_lines(image, model_path) -> str:
     3. Removes statistical outliers using z-score filtering
     4. Applies Principal Component Analysis (PCA) to find dominant directions
     5. For each vertex, finds the nearest neighbors aligned with PC1 and PC2 directions
-    6. Generates line connections between aligned vertices
+    6. Perform outlier detection to remove improper connections
+    7. Generates line connections between aligned vertices
 
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
@@ -166,6 +167,7 @@ def get_lines(image, model_path) -> str:
     pc2_points = []
 
     # Get bounding boxes from the image using the model
+    # todo: get the line based on the edge of bounding boxes
     bounding_boxes = get_bounding_boxes(image, model_path)
     vertices = []
     for box in bounding_boxes:
