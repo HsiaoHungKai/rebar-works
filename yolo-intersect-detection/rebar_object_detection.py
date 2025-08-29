@@ -29,6 +29,8 @@ def get_bounding_boxes(image, model_path):
     scores = boxes.conf
     xyxy = boxes.xyxy
 
+    # Apply Non-Maximum Suppression (NMS)
+    # Removes redundant bounding boxes that detect the same object multiple times, keeping only the best detection
     boxes_tensor = xyxy.detach().clone()
     scores_tensor = scores.detach().clone()
     keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.3)
@@ -41,6 +43,16 @@ def get_bounding_boxes(image, model_path):
 
 
 def rotate(vector, angle):
+    """
+    Rotates a 2D vector by a specified angle.
+
+    Args:
+        vector (list): A 2D vector [x, y]
+        angle (float): Rotation angle in degrees (positive = counterclockwise)
+
+    Returns:
+        list: Rotated vector [new_x, new_y]
+    """
     [x, y] = vector
     angler = angle * m.pi / 180
     newx = x * m.cos(angler) - y * m.sin(angler)
@@ -120,6 +132,33 @@ def vector_aligned_with_pc(
 
 
 def get_lines(image_path, model_path):
+    """
+    Detects rebar intersections in an image and generates connection lines using PCA alignment.
+
+    This function performs the following steps:
+    1. Uses YOLO model to detect rebar intersection bounding boxes
+    2. Extracts center points (vertices) from bounding boxes
+    3. Removes statistical outliers using z-score filtering
+    4. Applies Principal Component Analysis (PCA) to find dominant directions
+    5. For each vertex, finds the nearest neighbors aligned with PC1 and PC2 directions
+    6. Generates line connections between aligned vertices
+
+    Args:
+        image_path (str): Path to the input image file containing rebar intersections
+        model_path (str): Path to the trained YOLO model weights file (.pt format)
+
+    Returns:
+        str: JSON string containing line shapes in the format:
+             {
+               "shapes": [
+                 {
+                   "points": [[x1, y1], [x2, y2]],
+                   "shape_type": "line"
+                 },
+                 ...
+               ]
+             }
+    """
     vertices = []
     shapes = []
 
