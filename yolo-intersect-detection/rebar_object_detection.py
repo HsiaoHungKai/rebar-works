@@ -200,7 +200,6 @@ def get_lines(image, model_path) -> str:
         for other_vertex in vertices:
             if np.array_equal(vertex, other_vertex):
                 continue
-
             # Search for closest vertex in PC1 direction
             if vector_aligned_with_pc(vertex, other_vertex, pc1, 30):
                 diff = np.array(other_vertex) - np.array(vertex)
@@ -208,7 +207,6 @@ def get_lines(image, model_path) -> str:
                 if distance < pc1_vertex["distance"]:
                     pc1_vertex["vertex"] = tuple(other_vertex)
                     pc1_vertex["distance"] = distance
-
             # Search for closest vertex in PC2 direction
             if vector_aligned_with_pc(vertex, other_vertex, pc2, 30):
                 diff = np.array(other_vertex) - np.array(vertex)
@@ -236,10 +234,11 @@ def get_lines(image, model_path) -> str:
     for shape in pc1_points:
         point1 = np.array(shape[0])
         point2 = np.array(shape[1])
-
         # Because we detect vertex using pc, so the direction will be pretty much same
         vector = point2 - point1
-        radians = np.append(radians, np.arctan2(vector[1], vector[0]))
+        angles = np.arctan2(vector[1], vector[0])
+        angles = angles if angles >= 0 else angles + m.pi
+        radians = np.append(radians, angles)
 
     mean = np.mean(radians)
     std = np.std(radians)
@@ -261,10 +260,11 @@ def get_lines(image, model_path) -> str:
     for shape in pc2_points:
         point1 = np.array(shape[0])
         point2 = np.array(shape[1])
-
         # Because we detect vertex using pc, so the direction will be pretty much same
         vector = point2 - point1
-        radians = np.append(radians, np.arctan2(vector[1], vector[0]))
+        angles = np.arctan2(vector[1], vector[0])
+        angles = angles if angles >= 0 else angles + m.pi
+        radians = np.append(radians, angles)
 
     mean = np.mean(radians)
     std = np.std(radians)
