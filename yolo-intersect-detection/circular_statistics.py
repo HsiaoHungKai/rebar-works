@@ -1,5 +1,6 @@
 from functools import reduce
 from math import sin, cos, atan2, pi
+from scipy.stats import circmean, circstd
 
 
 def norm_angle(angle, mpi=pi):
@@ -27,8 +28,10 @@ def circular_interquartiles_value(angles):
 
 
 def circular_outliers(angles, coef=1.5, values=True):
-    mean = circular_mean(angles)
-    maxdelta = coef * circular_interquartiles_value(angles)
+    # mean = circular_mean(angles)
+    mean = circmean(angles, high=pi, low=-pi)
+    # maxdelta = coef * circular_interquartiles_value(angles)
+    maxdelta = coef * circstd(angles, high=pi, low=-pi)
     deltas = [(a - mean) for a in angles]
     outlier_indices = [
         z[0] if values 

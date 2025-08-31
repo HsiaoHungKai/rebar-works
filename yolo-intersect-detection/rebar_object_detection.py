@@ -3,7 +3,7 @@ import torch
 from torchvision.ops import nms
 import numpy as np
 import math as m
-from circular_statistics import circular_outliers
+from scipy.stats import circmean, circstd
 import json
 
 
@@ -132,7 +132,37 @@ def vector_aligned_with_pc(
         return False
 
 
-def get_lines(image, model_path, remove_outliers=True) -> str:
+def get_circular_outlier_indices(radians, coef=1.5):
+    """
+    Identifies outlier indices in a list of angles using circular statistics.
+
+    This function computes the circular mean and circular standard deviation of the input angles,
+    then flags as outliers any angles whose deviation from the mean exceeds (coef * circular std).
+    Useful for filtering out lines or vectors whose orientation is inconsistent with the main group.
+
+    Args:
+        radians (list or np.ndarray): List/array of angles in radians (e.g., from np.arctan2).
+        coef (float): Multiplier for the circular standard deviation to set the outlier threshold. Default is 1.5.
+
+    Returns:
+        list: Indices of input angles that are considered outliers.
+
+    Example:
+        >>> radians = [0.1, 0.2, 0.15, 3.0]
+        >>> outliers = get_circular_outlier_indices(radians, coef=1.5)
+        >>> print(outliers)
+        [3]
+    """
+    mean = circmean(radians, high=m.pi, low=-m.pi)
+    maxdelta = coef * circstd(radians, high=m.pi, low=-m.pi)
+    deltas = [(a - mean) for a in radians]
+    outlier_indices = [
+        i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
+    ]
+    return outlier_indices
+
+
+def get_lines(image, model_path, threshold=1.5) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
@@ -148,7 +178,7 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
         model_path (str): Path to the trained YOLO model weights file (.pt format)
-        remove_outliers (bool): Whether to remove outliers from the detected lines
+        threshold (float): Threshold for outlier detection
 
     Returns:
         str: JSON string containing line shapes in the format:
@@ -232,18 +262,19 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
             pc2_points.append(points)
 
     # Remove outliers depending on the radian of vector for pc1 using circular statistics
-    if remove_outliers:
-        radians = []
-        for shape in pc1_points:
-            point1 = np.array(shape[0])
-            point2 = np.array(shape[1])
-            # Because we detect vertex using pc, so the direction will be pretty much same
-            vector = point2 - point1
-            radian = np.arctan2(vector[1], vector[0])
-            radians.append(radian)
+    radians = []
+    for shape in pc1_points:
+        point1 = np.array(shape[0])
+        point2 = np.array(shape[1])
+        # Because we detect vertex using pc, so the direction will be pretty much same
+        vector = point2 - point1
+        radian = np.arctan2(vector[1], vector[0])
+        radians.append(radian)
 
-        outlier_indices = circular_outliers(radians, coef=2, values=False)
-        pc1_points = [pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices]
+    outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+    pc1_points = [
+        pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
+    ]
 
     for points in pc1_points:
         shapes.append(
@@ -255,18 +286,19 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
         )
 
     # Removing outliers depending on the radian of vector for pc2 using circular statistics
-    if remove_outliers:
-        radians = []
-        for shape in pc2_points:
-            point1 = np.array(shape[0])
-            point2 = np.array(shape[1])
-            # Because we detect vertex using pc, so the direction will be pretty much same
-            vector = point2 - point1
-            radian = np.arctan2(vector[1], vector[0])
-            radians.append(radian)
+    radians = []
+    for shape in pc2_points:
+        point1 = np.array(shape[0])
+        point2 = np.array(shape[1])
+        # Because we detect vertex using pc, so the direction will be pretty much same
+        vector = point2 - point1
+        radian = np.arctan2(vector[1], vector[0])
+        radians.append(radian)
 
-        outlier_indices = circular_outliers(radians, coef=2, values=False)
-        pc2_points = [pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices]
+    outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+    pc2_points = [
+        pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
+    ]
 
     for points in pc2_points:
         shapes.append(
