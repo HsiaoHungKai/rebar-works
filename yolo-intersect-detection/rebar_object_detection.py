@@ -88,11 +88,10 @@ def get_cone_boundaries(vector, angle):
     """
     # Rotate the input vector by +angle degrees (counterclockwise)
     positive_rotation = rotate(vector, angle)
-
     # Rotate the input vector by -angle degrees (clockwise)
     negative_rotation = rotate(vector, -angle)
 
-    # Stack the two rotated vectors vertically to form a 2x2 matrix
+    # Stack the two rotated vectors to form a 2x2 matrix
     # This matrix defines the boundary vectors of the span/cone
     return np.column_stack((positive_rotation, negative_rotation))
 
@@ -162,7 +161,7 @@ def get_circular_outlier_indices(radians, coef=1.5):
     return outlier_indices
 
 
-def get_lines(image, model_path, threshold=1.5) -> str:
+def get_lines(image, model_path, threshold: float = 0) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
@@ -178,7 +177,7 @@ def get_lines(image, model_path, threshold=1.5) -> str:
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
         model_path (str): Path to the trained YOLO model weights file (.pt format)
-        threshold (float): Threshold for outlier detection
+        threshold (float, optional): Threshold for outlier detection
 
     Returns:
         str: JSON string containing line shapes in the format:
@@ -262,19 +261,20 @@ def get_lines(image, model_path, threshold=1.5) -> str:
             pc2_points.append(points)
 
     # Remove outliers depending on the radian of vector for pc1 using circular statistics
-    radians = []
-    for shape in pc1_points:
-        point1 = np.array(shape[0])
-        point2 = np.array(shape[1])
-        # Because we detect vertex using pc, so the direction will be pretty much same
-        vector = point2 - point1
-        radian = np.arctan2(vector[1], vector[0])
-        radians.append(radian)
+    if threshold:
+        radians = []
+        for shape in pc1_points:
+            point1 = np.array(shape[0])
+            point2 = np.array(shape[1])
+            # Because we detect vertex using pc, so the direction will be pretty much same
+            vector = point2 - point1
+            radian = np.arctan2(vector[1], vector[0])
+            radians.append(radian)
 
-    outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-    pc1_points = [
-        pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
-    ]
+        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+        pc1_points = [
+            pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
+        ]
 
     for points in pc1_points:
         shapes.append(
@@ -286,19 +286,20 @@ def get_lines(image, model_path, threshold=1.5) -> str:
         )
 
     # Removing outliers depending on the radian of vector for pc2 using circular statistics
-    radians = []
-    for shape in pc2_points:
-        point1 = np.array(shape[0])
-        point2 = np.array(shape[1])
-        # Because we detect vertex using pc, so the direction will be pretty much same
-        vector = point2 - point1
-        radian = np.arctan2(vector[1], vector[0])
-        radians.append(radian)
+    if threshold:
+        radians = []
+        for shape in pc2_points:
+            point1 = np.array(shape[0])
+            point2 = np.array(shape[1])
+            # Because we detect vertex using pc, so the direction will be pretty much same
+            vector = point2 - point1
+            radian = np.arctan2(vector[1], vector[0])
+            radians.append(radian)
 
-    outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-    pc2_points = [
-        pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
-    ]
+        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+        pc2_points = [
+            pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
+        ]
 
     for points in pc2_points:
         shapes.append(
