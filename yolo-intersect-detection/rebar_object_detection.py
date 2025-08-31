@@ -236,9 +236,9 @@ def get_lines(image, model_path) -> str:
         point2 = np.array(shape[1])
         # Because we detect vertex using pc, so the direction will be pretty much same
         vector = point2 - point1
-        angles = np.arctan2(vector[1], vector[0])
-        angles = angles if angles >= 0 else angles + m.pi
-        radians = np.append(radians, angles)
+        radian = np.arctan2(vector[1], vector[0])
+        radian = radian if radian >= 0 else radian + m.pi
+        radians = np.append(radians, radian)
 
     mean = np.mean(radians)
     std = np.std(radians)
@@ -262,9 +262,9 @@ def get_lines(image, model_path) -> str:
         point2 = np.array(shape[1])
         # Because we detect vertex using pc, so the direction will be pretty much same
         vector = point2 - point1
-        angles = np.arctan2(vector[1], vector[0])
-        angles = angles if angles >= 0 else angles + m.pi
-        radians = np.append(radians, angles)
+        radian = np.arctan2(vector[1], vector[0])
+        radian = radian if radian >= 0 else radian + m.pi
+        radians = np.append(radians, radian)
 
     mean = np.mean(radians)
     std = np.std(radians)
