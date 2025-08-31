@@ -217,7 +217,7 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
                     pc2_vertex["vertex"] = tuple(other_vertex)
                     pc2_vertex["distance"] = distance
 
-        # Store the lines into shapes
+        # Store the point into pc1_points or pc2_points respectfully
         if pc1_vertex["vertex"] is not None:
             points = [
                 [vertex[0], vertex[1]],
