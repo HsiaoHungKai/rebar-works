@@ -231,17 +231,7 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
             ]
             pc2_points.append(points)
 
-    # Remove outliers depending on the radian of vector for pc1
-    # radians = np.array([])
-    # for shape in pc1_points:
-    #     point1 = np.array(shape[0])
-    #     point2 = np.array(shape[1])
-    #     # Because we detect vertex using pc, so the direction will be pretty much same
-    #     vector = point2 - point1
-    #     radian = np.arctan2(vector[1], vector[0])
-    #     # radian = radian if radian >= 0 else radian + m.pi
-    #     radians = np.append(radians, radian)
-    
+    # Remove outliers depending on the radian of vector for pc1 using circular statistics
     if remove_outliers:
         radians = []
         for shape in pc1_points:
@@ -250,44 +240,10 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
             # Because we detect vertex using pc, so the direction will be pretty much same
             vector = point2 - point1
             radian = np.arctan2(vector[1], vector[0])
-            # radian = radian if radian >= 0 else radian + m.pi
             radians.append(radian)
 
         outlier_indices = circular_outliers(radians, coef=2, values=False)
         pc1_points = [pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices]
-
-    # mean = np.mean(radians)
-    # std = np.std(radians)
-    # z_scores = np.abs((radians - mean) / std)
-    # pc1_points = np.array(pc1_points)
-    # pc1_points = pc1_points[z_scores < 1]
-
-    # print("radians: ", radians)
-    # median = np.median(radians)
-    # print("median: ", median)
-    # abs_deviation = np.abs(radians - median)
-    # print("abs_deviation: ", abs_deviation)
-    # mad = np.median(abs_deviation)  # Median Absolute Deviation
-    # z_scores = (radians - median) / mad
-    # print("pc1:")
-    # print(z_scores)
-    # print(z_scores[z_scores > 1])
-    # pc1_points = np.array(pc1_points)
-    # pc1_points = pc1_points[abs_deviation < 2]
-    # # pc1_points = pc1_points[np.abs(z_scores) < 1]
-
-    # print("radians: ", radians)
-    # circular_mean = circmean(radians, high=m.pi, low=-m.pi)
-    # print("circular_mean: ", circular_mean)
-    # circular_std = circstd(radians, high=m.pi, low=-m.pi)
-    # print("circular_std: ", circular_std)
-    # # z_scores = np.abs(np.exp(1J * (radians - circular_mean)) / circular_std)
-    # distances = np.abs(np.angle(np.exp(1j * (radians - circular_mean))))
-    # threshold = 2 * circular_std
-    # print("distances: ", distances)
-    # pc1_points = np.array(pc1_points)
-    # pc1_points = pc1_points[distances < threshold]
-    
 
     for points in pc1_points:
         shapes.append(
@@ -298,28 +254,7 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
             }
         )
 
-    # Remove outliers depending on the radian of vector for pc2
-    radians = np.array([])
-    for shape in pc2_points:
-        point1 = np.array(shape[0])
-        point2 = np.array(shape[1])
-        # Because we detect vertex using pc, so the direction will be pretty much same
-        vector = point2 - point1
-        radian = np.arctan2(vector[1], vector[0])
-        radian = radian if radian >= 0 else radian + m.pi
-        radians = np.append(radians, radian)
-
-    # mean = np.mean(radians)
-    # std = np.std(radians)
-    # z_scores = np.abs((radians - mean) / std)
-    # pc2_points = np.array(pc2_points)
-    # pc2_points = pc2_points[z_scores < 1]
-    # median = np.median(radians)
-    # abs_deviation = np.abs(radians - median)
-    # mad = np.median(abs_deviation)  # Median Absolute Deviation
-    # z_scores = (radians - median) / mad
-    # pc2_points = np.array(pc2_points)
-    # pc2_points = pc2_points[np.abs(z_scores) < 2]
+    # Removing outliers depending on the radian of vector for pc2 using circular statistics
     if remove_outliers:
         radians = []
         for shape in pc2_points:
@@ -328,14 +263,10 @@ def get_lines(image, model_path, remove_outliers=True) -> str:
             # Because we detect vertex using pc, so the direction will be pretty much same
             vector = point2 - point1
             radian = np.arctan2(vector[1], vector[0])
-            # radian = radian if radian >= 0 else radian + m.pi
             radians.append(radian)
 
-        print("radians: ", radians)
         outlier_indices = circular_outliers(radians, coef=2, values=False)
-        print("outliers: ", outlier_indices)
         pc2_points = [pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices]
-        print("pc2_points: ", pc2_points)
 
     for points in pc2_points:
         shapes.append(
