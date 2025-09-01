@@ -194,19 +194,19 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     """
     vertices = []
     shapes = []
-    pc1_points = []
-    pc2_points = []
+    horizontal_points = []
+    vertical_points = []
 
     # Get bounding boxes from the image using the model
     # todo: get the line based on the edge of bounding boxes
     bounding_boxes = get_bounding_boxes(image, model_path)
-    # vertices = []
-    # for box in bounding_boxes:
-    #     x_center = (box[0] + box[2]) / 2
-    #     y_center = (box[1] + box[3]) / 2
-    #     vertices.append((x_center, y_center))
-    # vertices = np.array(vertices)
-    vertices = bounding_boxes[:, :2]
+    vertices = []
+    for box in bounding_boxes:
+        x_center = (box[0] + box[2]) / 2
+        y_center = (box[1] + box[3]) / 2
+        vertices.append((x_center, y_center))
+    vertices = np.array(vertices)
+    # vertices = bounding_boxes[:, :2]
 
     # PCA Alignment
     mean = np.mean(vertices, axis=0)
@@ -214,57 +214,56 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     _, _, Vh = np.linalg.svd(vc)  # Get the principal component vectors
     pc1, pc2 = Vh[0], Vh[1]
     pc_direction = {
-        "pc1": get_pc_direction(pc1),
-        "pc2": get_pc_direction(pc2),
+        get_pc_direction(pc1): pc1,
+        get_pc_direction(pc2): pc2,
     }
-    print(pc_direction)
 
     # Find the nearest vertices in the direction of each principal component for each vertex
-    for vertex in vertices:
-        pc1_vertex = {
+    for i, vertex in enumerate(vertices):
+        horizontal_vertex = {
             "vertex": None,
             "distance": float("inf"),
         }
-        pc2_vertex = {
+        vertical_vertex = {
             "vertex": None,
             "distance": float("inf"),
         }
-        for other_vertex in vertices:
-            if np.array_equal(vertex, other_vertex):
+        for j, other_vertex in enumerate(vertices):
+            if i == j:
                 continue
-            # Search for closest vertex in PC1 direction
-            if vector_aligned_with_pc(vertex, other_vertex, pc1, 30):
+            # Search for closest vertex in horizontal direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc_direction["horizontal"], 30):
                 diff = np.array(other_vertex) - np.array(vertex)
                 distance = np.linalg.norm(diff, ord=2)
-                if distance < pc1_vertex["distance"]:
-                    pc1_vertex["vertex"] = tuple(other_vertex)
-                    pc1_vertex["distance"] = distance
-            # Search for closest vertex in PC2 direction
-            if vector_aligned_with_pc(vertex, other_vertex, pc2, 30):
+                if distance < horizontal_vertex["distance"]:
+                    horizontal_vertex["vertex"] = tuple(other_vertex)
+                    horizontal_vertex["distance"] = distance
+            # Search for closest vertex in vertical direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc_direction["vertical"], 30):
                 diff = np.array(other_vertex) - np.array(vertex)
                 distance = np.linalg.norm(diff, ord=2)
-                if distance < pc2_vertex["distance"]:
-                    pc2_vertex["vertex"] = tuple(other_vertex)
-                    pc2_vertex["distance"] = distance
+                if distance < vertical_vertex["distance"]:
+                    vertical_vertex["vertex"] = tuple(other_vertex)
+                    vertical_vertex["distance"] = distance
 
         # Store the point into pc1_points or pc2_points respectfully
-        if pc1_vertex["vertex"] is not None:
+        if horizontal_vertex["vertex"] is not None:
             points = [
                 [vertex[0], vertex[1]],
-                [pc1_vertex["vertex"][0], pc1_vertex["vertex"][1]],
+                [horizontal_vertex["vertex"][0], horizontal_vertex["vertex"][1]],
             ]
-            pc1_points.append(points)
-        if pc2_vertex["vertex"] is not None:
+            horizontal_points.append(points)
+        if vertical_vertex["vertex"] is not None:
             points = [
                 [vertex[0], vertex[1]],
-                [pc2_vertex["vertex"][0], pc2_vertex["vertex"][1]],
+                [vertical_vertex["vertex"][0], vertical_vertex["vertex"][1]],
             ]
-            pc2_points.append(points)
+            vertical_points.append(points)
 
-    # Remove outliers depending on the radian of vector for pc1 using circular statistics
+    # Remove outliers depending on the radian of vector for horizontal_points using circular statistics
     if threshold:
         radians = []
-        for shape in pc1_points:
+        for shape in horizontal_points:
             point1 = np.array(shape[0])
             point2 = np.array(shape[1])
             # Because we detect vertex using pc, so the direction will be pretty much same
@@ -273,23 +272,26 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             radians.append(radian)
 
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        pc1_points = [
-            pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
+        horizontal_points = [
+            horizontal_points[i] for i in range(len(horizontal_points)) if i not in outlier_indices
         ]
 
-    for points in pc1_points:
+    for points in horizontal_points:
         shapes.append(
             {
-                "points": [[float(points[0][0]), float(points[0][1])], [float(points[1][0]), float(points[1][1])]],
-                "orientation": "pc1",
+                "points": [
+                    [float(points[0][0]), float(points[0][1])],
+                    [float(points[1][0]), float(points[1][1])],
+                ],
+                "orientation": "horizontal",
                 "shape_type": "line",
             }
         )
 
-    # Removing outliers depending on the radian of vector for pc2 using circular statistics
+    # Removing outliers depending on the radian of vector for vertical_points using circular statistics
     if threshold:
         radians = []
-        for shape in pc2_points:
+        for shape in vertical_points:
             point1 = np.array(shape[0])
             point2 = np.array(shape[1])
             # Because we detect vertex using pc, so the direction will be pretty much same
@@ -298,15 +300,18 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             radians.append(radian)
 
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        pc2_points = [
-            pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
+        vertical_points = [
+            vertical_points[i] for i in range(len(vertical_points)) if i not in outlier_indices
         ]
 
-    for points in pc2_points:
+    for points in vertical_points:
         shapes.append(
             {
-                "points": [[float(points[0][0]), float(points[0][1])], [float(points[1][0]), float(points[1][1])]],
-                "orientation": "pc2",
+                "points": [
+                    [float(points[0][0]), float(points[0][1])],
+                    [float(points[1][0]), float(points[1][1])],
+                ],
+                "orientation": "vertical",
                 "shape_type": "line",
             }
         )
@@ -319,14 +324,14 @@ def get_pc_direction(pc) -> str:
     Determines the orientation of a principal component vector.
 
     This function analyzes the components of a 2D principal component vector
-    to classify its orientation as either 'horizontal', 'vertical', or 'diagonal'.
+    to classify its orientation as either 'horizontal' or 'vertical'.
     The classification is based on the relative magnitudes of the x and y components.
 
     Args:
         pc (list or np.array): A 2D principal component vector [x, y]
 
     Returns:
-        str: Orientation of the vector, one of 'horizontal', 'vertical', or 'diagonal'
+        str: Orientation of the vector, one of 'horizontal' or 'vertical'
 
     Example:
         >>> get_pc_direction([1, 0.1])
