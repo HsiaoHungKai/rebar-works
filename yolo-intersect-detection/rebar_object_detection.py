@@ -205,7 +205,6 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
         y_center = (box[1] + box[3]) / 2
         vertices.append((x_center, y_center))
     vertices = np.array(vertices)
-    # vertices = bounding_boxes[:, :2]
 
     # PCA Alignment
     mean = np.mean(vertices, axis=0)
