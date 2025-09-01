@@ -217,6 +217,10 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     vc = vertices - mean
     _, _, Vh = np.linalg.svd(vc)  # Get the principal component vectors
     pc1, pc2 = Vh[0], Vh[1]
+    pc_direction = {
+        "pc1": get_pc_direction(pc1),
+        "pc2": get_pc_direction(pc2),
+    }
 
     # Find the nearest vertices in the direction of each principal component for each vertex
     for vertex in vertices:
@@ -311,3 +315,27 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
         )
 
     return json.dumps({"shapes": shapes}, indent=2)
+
+
+def get_pc_direction(pc) -> str:
+    """
+    Determines the orientation of a principal component vector.
+
+    This function analyzes the components of a 2D principal component vector
+    to classify its orientation as either 'horizontal', 'vertical', or 'diagonal'.
+    The classification is based on the relative magnitudes of the x and y components.
+
+    Args:
+        pc (list or np.array): A 2D principal component vector [x, y]
+
+    Returns:
+        str: Orientation of the vector, one of 'horizontal', 'vertical', or 'diagonal'
+
+    Example:
+        >>> get_pc_direction([1, 0.1])
+        'horizontal'
+        >>> get_pc_direction([0.1, 1])
+        'vertical'
+    """
+    x, y = pc
+    return "horizontal" if abs(x) >= abs(y) else "vertical"
