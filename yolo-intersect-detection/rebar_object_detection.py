@@ -194,8 +194,8 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     """
     vertices = []
     shapes = []
-    horizontal_points = []
-    vertical_points = []
+    pc1_points = []
+    pc2_points = []
 
     # Get bounding boxes from the image using the model
     # todo: get the line based on the edge of bounding boxes
@@ -213,57 +213,67 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     vc = vertices - mean
     _, _, Vh = np.linalg.svd(vc)  # Get the principal component vectors
     pc1, pc2 = Vh[0], Vh[1]
+    # Get pc vector using "left", "right", "up" or "down"
     pc_direction = {
-        get_pc_direction(pc1): pc1,
-        get_pc_direction(pc2): pc2,
+        "pc1": get_pc_direction(pc1),
+        "pc2": get_pc_direction(pc2),
     }
 
     # Find the nearest vertices in the direction of each principal component for each vertex
     for i, vertex in enumerate(vertices):
-        horizontal_vertex = {
-            "vertex": None,
+        pc1_vertex = {
+            "index": None,
             "distance": float("inf"),
         }
-        vertical_vertex = {
-            "vertex": None,
+        pc2_vertex = {
+            "index": None,
             "distance": float("inf"),
         }
         for j, other_vertex in enumerate(vertices):
             if i == j:
                 continue
-            # Search for closest vertex in horizontal direction
-            if vector_aligned_with_pc(vertex, other_vertex, pc_direction["horizontal"], 30):
+            # Search for closest vertex in pc1 direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc1, 30):
                 diff = np.array(other_vertex) - np.array(vertex)
                 distance = np.linalg.norm(diff, ord=2)
-                if distance < horizontal_vertex["distance"]:
-                    horizontal_vertex["vertex"] = tuple(other_vertex)
-                    horizontal_vertex["distance"] = distance
-            # Search for closest vertex in vertical direction
-            if vector_aligned_with_pc(vertex, other_vertex, pc_direction["vertical"], 30):
+                if distance < pc1_vertex["distance"]:
+                    # pc1_vertex["vertex"] = tuple(other_vertex)
+                    pc1_vertex["index"] = j
+                    pc1_vertex["distance"] = distance
+            # Search for closest vertex in pc2 direction
+            if vector_aligned_with_pc(vertex, other_vertex, pc2, 30):
                 diff = np.array(other_vertex) - np.array(vertex)
                 distance = np.linalg.norm(diff, ord=2)
-                if distance < vertical_vertex["distance"]:
-                    vertical_vertex["vertex"] = tuple(other_vertex)
-                    vertical_vertex["distance"] = distance
+                if distance < pc2_vertex["distance"]:
+                    pc2_vertex["index"] = j
+                    pc2_vertex["distance"] = distance
 
         # Store the point into pc1_points or pc2_points respectfully
-        if horizontal_vertex["vertex"] is not None:
-            points = [
-                [vertex[0], vertex[1]],
-                [horizontal_vertex["vertex"][0], horizontal_vertex["vertex"][1]],
-            ]
-            horizontal_points.append(points)
-        if vertical_vertex["vertex"] is not None:
-            points = [
-                [vertex[0], vertex[1]],
-                [vertical_vertex["vertex"][0], vertical_vertex["vertex"][1]],
-            ]
-            vertical_points.append(points)
+        if pc1_vertex["index"] is not None:
+            # points = [
+            #     [vertex[0], vertex[1]],
+            #     [pc1_vertex["vertex"][0], pc1_vertex["vertex"][1]],
+            # ]
+            direction = pc_direction["pc1"]
+            start = bounding_boxes[i]
+            end = bounding_boxes[pc1_vertex["index"]]
+            points = get_points_from_direction(start, end, direction)
+            pc1_points.append(points)
+        if pc2_vertex["index"] is not None:
+            direction = pc_direction["pc2"]
+            start = bounding_boxes[i]
+            end = bounding_boxes[pc2_vertex["index"]]
+            # points = [
+            #     [vertex[0], vertex[1]],
+            #     [pc2_vertex["vertex"][0], pc2_vertex["vertex"][1]],
+            # ]
+            points = get_points_from_direction(start, end, direction)
+            pc2_points.append(points)
 
-    # Remove outliers depending on the radian of vector for horizontal_points using circular statistics
+    # Remove outliers depending on the radian of vector for pc1_points using circular statistics
     if threshold:
         radians = []
-        for shape in horizontal_points:
+        for shape in pc1_points:
             point1 = np.array(shape[0])
             point2 = np.array(shape[1])
             # Because we detect vertex using pc, so the direction will be pretty much same
@@ -272,26 +282,26 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             radians.append(radian)
 
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        horizontal_points = [
-            horizontal_points[i] for i in range(len(horizontal_points)) if i not in outlier_indices
+        pc1_points = [
+            pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
         ]
 
-    for points in horizontal_points:
+    for points in pc1_points:
         shapes.append(
             {
                 "points": [
                     [float(points[0][0]), float(points[0][1])],
                     [float(points[1][0]), float(points[1][1])],
                 ],
-                "orientation": "horizontal",
+                "orientation": horizontal_or_vertical(pc_direction["pc1"]),
                 "shape_type": "line",
             }
         )
 
-    # Removing outliers depending on the radian of vector for vertical_points using circular statistics
+    # Removing outliers depending on the radian of vector for pc2_points using circular statistics
     if threshold:
         radians = []
-        for shape in vertical_points:
+        for shape in pc2_points:
             point1 = np.array(shape[0])
             point2 = np.array(shape[1])
             # Because we detect vertex using pc, so the direction will be pretty much same
@@ -300,18 +310,18 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             radians.append(radian)
 
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        vertical_points = [
-            vertical_points[i] for i in range(len(vertical_points)) if i not in outlier_indices
+        pc2_points = [
+            pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
         ]
 
-    for points in vertical_points:
+    for points in pc2_points:
         shapes.append(
             {
                 "points": [
                     [float(points[0][0]), float(points[0][1])],
                     [float(points[1][0]), float(points[1][1])],
                 ],
-                "orientation": "vertical",
+                "orientation": horizontal_or_vertical(pc_direction["pc2"]),
                 "shape_type": "line",
             }
         )
@@ -340,4 +350,37 @@ def get_pc_direction(pc) -> str:
         'vertical'
     """
     x, y = pc
-    return "horizontal" if abs(x) >= abs(y) else "vertical"
+    if abs(x) >= abs(y):
+        return "right" if x >= 0 else "left"
+    else:
+        return "down" if y >= 0 else "up"
+    
+
+def get_points_from_direction(start, end, direction): 
+    if direction == "left":
+        return [
+            [start[0], (start[1] + start[3]) / 2],
+            [end[2], (end[1] + end[3]) / 2]
+        ]
+    elif direction == "right":
+        return [
+            [start[2], (start[1] + start[3]) / 2],
+            [end[0], (end[1] + end[3]) / 2],
+        ]
+    elif direction == "up":
+        return [
+            [(start[0] + start[2]) / 2, start[1]],
+            [(end[0] + end[2]) / 2, end[3]],
+        ]
+    elif direction == "down":
+        return [
+            [(start[0] + start[2]) / 2, start[3]],
+            [(end[0] + end[2]) / 2, end[1]],
+        ]
+        
+    
+def horizontal_or_vertical(direction):
+    if direction == "left" or direction == "right":
+        return "horizontal"
+    else:
+        return "vertical"
