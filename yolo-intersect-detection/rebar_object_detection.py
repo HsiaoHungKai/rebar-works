@@ -27,15 +27,13 @@ def get_bounding_boxes(image, model_path):
     results = model.predict(image, verbose=False)
 
     boxes = results[0].boxes
-    scores = boxes.conf
-    xyxy = boxes.xyxy
+    scores = boxes.conf.detach().clone()
+    xyxy = boxes.xyxy.detach().clone()
 
     # Apply Non-Maximum Suppression (NMS)
     # Removes redundant bounding boxes that detect the same object multiple times, keeping only the best detection
-    boxes_tensor = xyxy.detach().clone()
-    scores_tensor = scores.detach().clone()
-    keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.3)
-    filtered_boxes = boxes_tensor[keep]
+    mask = nms(xyxy, scores, iou_threshold=0.3)
+    filtered_boxes = xyxy[mask]
 
     if results[0].boxes is not None:
         return filtered_boxes.cpu().numpy()
