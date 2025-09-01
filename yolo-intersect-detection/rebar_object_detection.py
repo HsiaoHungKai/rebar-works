@@ -185,7 +185,7 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
                "shapes": [
                  {
                    "points": [[x1, y1], [x2, y2]],
-                   "orientation": "pc1",
+                   "orientation": "horizontal" | "vertical",
                    "shape_type": "line"
                  },
                  ...
