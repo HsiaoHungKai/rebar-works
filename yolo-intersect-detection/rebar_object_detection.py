@@ -200,20 +200,16 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     # Get bounding boxes from the image using the model
     # todo: get the line based on the edge of bounding boxes
     bounding_boxes = get_bounding_boxes(image, model_path)
-    vertices = []
-    for box in bounding_boxes:
-        x_center = (box[0] + box[2]) / 2
-        y_center = (box[1] + box[3]) / 2
-        vertices.append((x_center, y_center))
-    vertices = np.array(vertices)
-
-    # Remove outliers
-    mean = np.mean(vertices, axis=0)
-    std = np.std(vertices, axis=0)
-    z_scores = np.abs((vertices - mean) / std)
-    vertices = vertices[(z_scores < 3).all(axis=1)]
+    # vertices = []
+    # for box in bounding_boxes:
+    #     x_center = (box[0] + box[2]) / 2
+    #     y_center = (box[1] + box[3]) / 2
+    #     vertices.append((x_center, y_center))
+    # vertices = np.array(vertices)
+    vertices = bounding_boxes[:, :2]
 
     # PCA Alignment
+    mean = np.mean(vertices, axis=0)
     vc = vertices - mean
     _, _, Vh = np.linalg.svd(vc)  # Get the principal component vectors
     pc1, pc2 = Vh[0], Vh[1]
@@ -221,6 +217,7 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
         "pc1": get_pc_direction(pc1),
         "pc2": get_pc_direction(pc2),
     }
+    print(pc_direction)
 
     # Find the nearest vertices in the direction of each principal component for each vertex
     for vertex in vertices:
@@ -283,7 +280,7 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     for points in pc1_points:
         shapes.append(
             {
-                "points": [[points[0][0], points[0][1]], [points[1][0], points[1][1]]],
+                "points": [[float(points[0][0]), float(points[0][1])], [float(points[1][0]), float(points[1][1])]],
                 "orientation": "pc1",
                 "shape_type": "line",
             }
@@ -308,7 +305,7 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     for points in pc2_points:
         shapes.append(
             {
-                "points": [[points[0][0], points[0][1]], [points[1][0], points[1][1]]],
+                "points": [[float(points[0][0]), float(points[0][1])], [float(points[1][0]), float(points[1][1])]],
                 "orientation": "pc2",
                 "shape_type": "line",
             }
