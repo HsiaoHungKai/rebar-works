@@ -198,7 +198,6 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     pc2_points = []
 
     # Get bounding boxes from the image using the model
-    # todo: get the line based on the edge of bounding boxes
     bounding_boxes = get_bounding_boxes(image, model_path)
     vertices = []
     for box in bounding_boxes:
@@ -250,10 +249,6 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
 
         # Store the point into pc1_points or pc2_points respectfully
         if pc1_vertex["index"] is not None:
-            # points = [
-            #     [vertex[0], vertex[1]],
-            #     [pc1_vertex["vertex"][0], pc1_vertex["vertex"][1]],
-            # ]
             direction = pc_direction["pc1"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc1_vertex["index"]]
@@ -263,10 +258,6 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             direction = pc_direction["pc2"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc2_vertex["index"]]
-            # points = [
-            #     [vertex[0], vertex[1]],
-            #     [pc2_vertex["vertex"][0], pc2_vertex["vertex"][1]],
-            # ]
             points = get_points_from_direction(start, end, direction)
             pc2_points.append(points)
 
@@ -280,12 +271,12 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             vector = point2 - point1
             radian = np.arctan2(vector[1], vector[0])
             radians.append(radian)
-
+        # Remove outliers
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
         pc1_points = [
             pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
         ]
-
+    # Add points to shapes
     for points in pc1_points:
         shapes.append(
             {
@@ -308,12 +299,12 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             vector = point2 - point1
             radian = np.arctan2(vector[1], vector[0])
             radians.append(radian)
-
+        # Remove outliers
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
         pc2_points = [
             pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
         ]
-
+    # Add remaining points to shapes
     for points in pc2_points:
         shapes.append(
             {
@@ -354,9 +345,9 @@ def get_pc_direction(pc) -> str:
         return "right" if x >= 0 else "left"
     else:
         return "down" if y >= 0 else "up"
-    
 
-def get_points_from_direction(start, end, direction): 
+
+def get_points_from_direction(start, end, direction):
     """
     Returns the coordinates of two points on the edges of two bounding boxes,
     allowing a line to be drawn between the edges in a specified direction.
@@ -378,10 +369,7 @@ def get_points_from_direction(start, end, direction):
         that start and end at the edges of bounding boxes, rather than at their centers.
     """
     if direction == "left":
-        return [
-            [start[0], (start[1] + start[3]) / 2],
-            [end[2], (end[1] + end[3]) / 2]
-        ]
+        return [[start[0], (start[1] + start[3]) / 2], [end[2], (end[1] + end[3]) / 2]]
     elif direction == "right":
         return [
             [start[2], (start[1] + start[3]) / 2],
@@ -397,8 +385,8 @@ def get_points_from_direction(start, end, direction):
             [(start[0] + start[2]) / 2, start[3]],
             [(end[0] + end[2]) / 2, end[1]],
         ]
-        
-    
+
+
 def horizontal_or_vertical(direction) -> str:
     if direction == "left" or direction == "right":
         return "horizontal"
