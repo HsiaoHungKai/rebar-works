@@ -357,6 +357,26 @@ def get_pc_direction(pc) -> str:
     
 
 def get_points_from_direction(start, end, direction): 
+    """
+    Returns the coordinates of two points on the edges of two bounding boxes,
+    allowing a line to be drawn between the edges in a specified direction.
+
+    Args:
+        start (list or np.ndarray): The first bounding box in [x1, y1, x2, y2] format.
+        end (list or np.ndarray): The second bounding box in [x1, y1, x2, y2] format.
+        direction (str): The direction of the connection ("left", "right", "up", or "down").
+
+    Returns:
+        list: A list of two [x, y] points, one on the edge of each bounding box.
+
+    Example:
+        >>> get_points_from_direction([10, 20, 30, 40], [50, 60, 70, 80], "right")
+        [[30, 30.0], [50, 70.0]]
+
+    Note:
+        This function is useful for visualizing connections between objects by drawing lines
+        that start and end at the edges of bounding boxes, rather than at their centers.
+    """
     if direction == "left":
         return [
             [start[0], (start[1] + start[3]) / 2],
@@ -379,7 +399,7 @@ def get_points_from_direction(start, end, direction):
         ]
         
     
-def horizontal_or_vertical(direction):
+def horizontal_or_vertical(direction) -> str:
     if direction == "left" or direction == "right":
         return "horizontal"
     else:
