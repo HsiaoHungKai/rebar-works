@@ -154,9 +154,9 @@ def get_circular_outlier_indices(radians, coef=1.5):
     """
     mean = circmean(radians, high=m.pi, low=-m.pi)
     maxdelta = coef * circstd(radians, high=m.pi, low=-m.pi)
-    deltas = [(a - mean) for a in radians]
+    deltas = [(radian - mean) for radian in radians]
     outlier_indices = [
-        i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
+        i for i, delta in enumerate(deltas) if abs(delta) > maxdelta
     ]
     return outlier_indices
 
