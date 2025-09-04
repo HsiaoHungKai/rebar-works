@@ -130,6 +130,28 @@ def vector_aligned_with_pc(
     
     
 def norm_radian(radian, pi=m.pi):
+    """
+    Normalizes an angle in radians to the range [-π, π].
+
+    This function ensures that any input angle (in radians) is wrapped into the standard interval
+    from -π to π. This is useful for comparing angles and performing circular statistics,
+    as angles outside this range are equivalent to some angle within it.
+
+    Args:
+        radian (float): The angle in radians to normalize.
+        pi (float, optional): The value of π to use (default: math.pi).
+
+    Returns:
+        float: The normalized angle in radians, guaranteed to be within [-π, π].
+
+    Example:
+        >>> norm_radian(4)
+        -2.2831853071795862
+        >>> norm_radian(-4)
+        2.2831853071795862
+        >>> norm_radian(3.14)
+        3.14
+    """
     radian = radian % (2 * pi)
     return radian if abs(radian) <= pi else radian - (1 if radian >= 0 else -1) * 2 * pi
 
@@ -165,6 +187,55 @@ def get_circular_outlier_indices(radians, coef=1.5):
     return outlier_indices
 
 
+def remove_outliers(shapes, points, pc_direction, threshold: float = 1.5):
+    """
+    Removes outlier line segments based on their orientation using circular statistics.
+
+    This function analyzes the angles of line segments (defined by 'points') and removes those
+    whose orientation deviates significantly from the main group, as determined by circular
+    statistics (mean and standard deviation on the unit circle). The remaining (inlier) segments
+    are then added to the 'shapes' list in a format suitable for JSON export.
+
+    Args:
+        shapes (list): The list to which inlier line dictionaries will be appended.
+        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
+        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
+        threshold (float, optional): Outlier threshold as a multiple of circular standard deviation.
+                                     Default is 1.5.
+
+    Returns:
+        list: The updated 'shapes' list with inlier line segments added.
+    """
+    # Remove outliers depending on the radian of vector for pc_points using circular statistics
+    if threshold:
+        radians = []
+        for shape in points:
+            point1 = np.array(shape[0])
+            point2 = np.array(shape[1])
+            # Because we detect vertex using pc, so the direction will be pretty much same
+            vector = point2 - point1
+            radian = np.arctan2(vector[1], vector[0])
+            radians.append(radian)
+        # Remove outliers
+        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+        points = [
+            points[i] for i in range(len(points)) if i not in outlier_indices
+        ]
+    # Add points to shapes
+    for points in points:
+        shapes.append(
+            {
+                "points": [
+                    [float(points[0][0]), float(points[0][1])],
+                    [float(points[1][0]), float(points[1][1])],
+                ],
+                "orientation": horizontal_or_vertical(pc_direction),
+                "shape_type": "line",
+            }
+        )
+    return shapes
+
+
 def get_lines(image, model_path, threshold: float = 0) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
@@ -172,11 +243,10 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
     This function performs the following steps:
     1. Uses YOLO model to detect rebar intersection bounding boxes
     2. Extracts center points (vertices) from bounding boxes
-    3. Removes statistical outliers using z-score filtering
-    4. Applies Principal Component Analysis (PCA) to find dominant directions
-    5. For each vertex, finds the nearest neighbors aligned with PC1 and PC2 directions
-    6. Perform outlier detection to remove improper connections
-    7. Generates line connections between aligned vertices
+    3. Applies Principal Component Analysis (PCA) to find dominant directions
+    4. For each vertex, finds the nearest neighbors aligned with PC1 and PC2 directions
+    5. Perform outlier detection to remove improper connections
+    6. Generates line connections between aligned vertices
 
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
@@ -263,62 +333,11 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             end = bounding_boxes[pc2_vertex["index"]]
             points = get_points_from_direction(start, end, direction)
             pc2_points.append(points)
-
-    # Remove outliers depending on the radian of vector for pc1_points using circular statistics
-    if threshold:
-        radians = []
-        for shape in pc1_points:
-            point1 = np.array(shape[0])
-            point2 = np.array(shape[1])
-            # Because we detect vertex using pc, so the direction will be pretty much same
-            vector = point2 - point1
-            radian = np.arctan2(vector[1], vector[0])
-            radians.append(radian)
-        # Remove outliers
-        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        pc1_points = [
-            pc1_points[i] for i in range(len(pc1_points)) if i not in outlier_indices
-        ]
-    # Add points to shapes
-    for points in pc1_points:
-        shapes.append(
-            {
-                "points": [
-                    [float(points[0][0]), float(points[0][1])],
-                    [float(points[1][0]), float(points[1][1])],
-                ],
-                "orientation": horizontal_or_vertical(pc_direction["pc1"]),
-                "shape_type": "line",
-            }
-        )
-
-    # Removing outliers depending on the radian of vector for pc2_points using circular statistics
-    if threshold:
-        radians = []
-        for shape in pc2_points:
-            point1 = np.array(shape[0])
-            point2 = np.array(shape[1])
-            # Because we detect vertex using pc, so the direction will be pretty much same
-            vector = point2 - point1
-            radian = np.arctan2(vector[1], vector[0])
-            radians.append(radian)
-        # Remove outliers
-        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        pc2_points = [
-            pc2_points[i] for i in range(len(pc2_points)) if i not in outlier_indices
-        ]
-    # Add remaining points to shapes
-    for points in pc2_points:
-        shapes.append(
-            {
-                "points": [
-                    [float(points[0][0]), float(points[0][1])],
-                    [float(points[1][0]), float(points[1][1])],
-                ],
-                "orientation": horizontal_or_vertical(pc_direction["pc2"]),
-                "shape_type": "line",
-            }
-        )
+            
+    
+    # Removing outliers depending on the radian of vector for pc1_points and pc2_points using circular statistics
+    remove_outliers(shapes, pc1_points, pc_direction["pc1"], threshold)
+    remove_outliers(shapes, pc2_points, pc_direction["pc2"], threshold)
 
     return json.dumps({"shapes": shapes}, indent=2)
 
