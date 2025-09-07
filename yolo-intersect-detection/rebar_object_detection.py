@@ -177,15 +177,17 @@ def get_circular_outlier_indices(radians, threshold: float = 1.5):
         >>> print(outliers)
         [3]
     """
-    outlier_indices = []
-    if threshold:
-        radians = [2 * radian for radian in radians]
-        mean = circmean(radians, high=m.pi, low=-m.pi)
-        maxdelta = threshold * circstd(radians, high=m.pi, low=-m.pi)
-        deltas = [norm_radian(radian - mean) for radian in radians]
-        outlier_indices = [
-            i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
-        ]
+    if threshold == 0:
+        return []
+    
+    radians = [2 * radian for radian in radians]
+    mean = circmean(radians, high=m.pi, low=-m.pi)
+    maxdelta = threshold * circstd(radians, high=m.pi, low=-m.pi)
+    deltas = [norm_radian(radian - mean) for radian in radians]
+    outlier_indices = [
+        i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
+    ]
+    
     return outlier_indices
 
 
@@ -211,21 +213,22 @@ def get_mode_outlier_indices(radians, threshold: float = 10):
         >>> print(outliers)
         [3]  # Index of the 1.5 radian angle
     """
-    outlier_indices = []
-    if threshold:
-        bins = 45
-        # Compute histogram
-        hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
-        # Find the index of the bin with the most values
-        max_bin_index = np.argmax(hist)
-        mode = bin_edges[max_bin_index]
+    if threshold == 0:
+        return []
+    
+    bins = 36
+    # Compute histogram
+    hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
+    # Find the index of the bin with the most values
+    max_bin_index = np.argmax(hist)
+    mode = bin_edges[max_bin_index] + (m.pi / bins) # Center of the mode bin
 
-        threshold = threshold * m.pi / 180
-        outlier_indices = [
-            i
-            for i, radian in enumerate(radians)
-            if abs(norm_radian(radian - mode)) > threshold
-        ]
+    threshold = threshold * m.pi / 180
+    outlier_indices = [
+        i
+        for i, radian in enumerate(radians)
+        if abs(norm_radian(radian - mode)) > threshold
+    ]
 
     return outlier_indices
 
@@ -389,18 +392,18 @@ def get_lines(image, model_path, threshold) -> str:
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
-    remove_outliers(
-        get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
-    )
-    remove_outliers(
-        get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
-    )
     # remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    #     get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
     # )
     # remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    #     get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     # )
+    remove_outliers(
+        get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    )
+    remove_outliers(
+        get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    )
 
     return json.dumps({"shapes": shapes}, indent=2)
 
