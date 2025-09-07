@@ -253,26 +253,25 @@ def remove_outliers_using_mode(shapes, points, pc_direction, threshold: float = 
         list: The updated 'shapes' list with inlier line segments added.
     """
     if threshold:
-        angles = []
+        radians = []
         for shape in points:
             point1 = np.array(shape[0])
             point2 = np.array(shape[1])
             # Because we detect vertex using pc, so the direction will be pretty much same
             vector = point2 - point1
-            angle = m.degrees(m.atan2(vector[1], vector[0]))
-            angles.append(angle)
+            radian = np.arctan2(vector[1], vector[0])
+            radians.append(radian)
 
-        # Find the mode angle
-        hist, bin_edges = np.histogram(angles, bins=360, range=(-180, 180))
-        mode_index = np.argmax(hist)
-        mode_angle = (bin_edges[mode_index] + bin_edges[mode_index + 1]) / 2
-
-        # Remove outliers based on the mode angle
-        inlier_points = []
-        for i, angle in enumerate(angles):
-            if abs(angle - mode_angle) <= threshold:
-                inlier_points.append(points[i])
-        points = inlier_points
+        bins = 45
+        # Compute histogram
+        hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
+        # Find the index of the bin with the most values
+        max_bin_index = np.argmax(hist)
+        mode = bin_edges[max_bin_index]
+        
+        threshold = threshold * m.pi / 180
+        outlier_indices = [i for i, radian in enumerate(radians) if abs(norm_radian(radian - mode)) > threshold]
+        points = [points[i] for i in range(len(points)) if i not in outlier_indices]
 
     # Add points to shapes
     for points in points:
@@ -389,8 +388,11 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using circular statistics
-    remove_outliers_using_std(shapes, pc1_points, pc_direction["pc1"], threshold)
-    remove_outliers_using_std(shapes, pc2_points, pc_direction["pc2"], threshold)
+    # remove_outliers_using_std(shapes, pc1_points, pc_direction["pc1"], threshold)
+    # remove_outliers_using_std(shapes, pc2_points, pc_direction["pc2"], threshold)
+    threshold = 10
+    remove_outliers_using_mode(shapes, pc1_points, pc_direction["pc1"], threshold)
+    remove_outliers_using_mode(shapes, pc2_points, pc_direction["pc2"], threshold)
 
     return json.dumps({"shapes": shapes}, indent=2)
 
