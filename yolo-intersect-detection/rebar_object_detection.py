@@ -127,8 +127,8 @@ def vector_aligned_with_pc(
 
     except np.linalg.LinAlgError:
         return False
-    
-    
+
+
 def norm_radian(radian, pi=m.pi):
     """
     Normalizes an angle in radians to the range [-π, π].
@@ -187,7 +187,7 @@ def get_circular_outlier_indices(radians, coef=1.5):
     return outlier_indices
 
 
-def remove_outliers(shapes, points, pc_direction, threshold: float = 1.5):
+def remove_outliers_using_std(shapes, points, pc_direction, threshold: float = 1.5):
     """
     Removes outlier line segments based on their orientation using circular statistics.
 
@@ -206,7 +206,6 @@ def remove_outliers(shapes, points, pc_direction, threshold: float = 1.5):
     Returns:
         list: The updated 'shapes' list with inlier line segments added.
     """
-    # Remove outliers depending on the radian of vector for pc_points using circular statistics
     if threshold:
         radians = []
         for shape in points:
@@ -218,9 +217,8 @@ def remove_outliers(shapes, points, pc_direction, threshold: float = 1.5):
             radians.append(radian)
         # Remove outliers
         outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
-        points = [
-            points[i] for i in range(len(points)) if i not in outlier_indices
-        ]
+        points = [points[i] for i in range(len(points)) if i not in outlier_indices]
+
     # Add points to shapes
     for points in points:
         shapes.append(
@@ -233,6 +231,62 @@ def remove_outliers(shapes, points, pc_direction, threshold: float = 1.5):
                 "shape_type": "line",
             }
         )
+
+    return shapes
+
+
+def remove_outliers_using_mode(shapes, points, pc_direction, threshold: float = 10):
+    """
+    Removes outlier line segments based on their orientation using a mode-based approach.
+
+    This function analyzes the angles of line segments (defined by 'points') and removes those
+    whose orientation deviates significantly from the most common angle (mode). The remaining
+    (inlier) segments are then added to the 'shapes' list in a format suitable for JSON export.
+
+    Args:
+        shapes (list): The list to which inlier line dictionaries will be appended.
+        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
+        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
+        threshold (float, optional): Outlier threshold in degrees from the mode angle. Default is 10.
+
+    Returns:
+        list: The updated 'shapes' list with inlier line segments added.
+    """
+    if threshold:
+        angles = []
+        for shape in points:
+            point1 = np.array(shape[0])
+            point2 = np.array(shape[1])
+            # Because we detect vertex using pc, so the direction will be pretty much same
+            vector = point2 - point1
+            angle = m.degrees(m.atan2(vector[1], vector[0]))
+            angles.append(angle)
+
+        # Find the mode angle
+        hist, bin_edges = np.histogram(angles, bins=360, range=(-180, 180))
+        mode_index = np.argmax(hist)
+        mode_angle = (bin_edges[mode_index] + bin_edges[mode_index + 1]) / 2
+
+        # Remove outliers based on the mode angle
+        inlier_points = []
+        for i, angle in enumerate(angles):
+            if abs(angle - mode_angle) <= threshold:
+                inlier_points.append(points[i])
+        points = inlier_points
+
+    # Add points to shapes
+    for points in points:
+        shapes.append(
+            {
+                "points": [
+                    [float(points[0][0]), float(points[0][1])],
+                    [float(points[1][0]), float(points[1][1])],
+                ],
+                "orientation": horizontal_or_vertical(pc_direction),
+                "shape_type": "line",
+            }
+        )
+
     return shapes
 
 
@@ -333,34 +387,42 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             end = bounding_boxes[pc2_vertex["index"]]
             points = get_points_from_direction(start, end, direction)
             pc2_points.append(points)
-            
-    
+
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using circular statistics
-    remove_outliers(shapes, pc1_points, pc_direction["pc1"], threshold)
-    remove_outliers(shapes, pc2_points, pc_direction["pc2"], threshold)
+    remove_outliers_using_std(shapes, pc1_points, pc_direction["pc1"], threshold)
+    remove_outliers_using_std(shapes, pc2_points, pc_direction["pc2"], threshold)
 
     return json.dumps({"shapes": shapes}, indent=2)
 
 
 def get_pc_direction(pc) -> str:
     """
-    Determines the orientation of a principal component vector.
+    Determines the directional orientation of a principal component vector.
 
     This function analyzes the components of a 2D principal component vector
-    to classify its orientation as either 'horizontal' or 'vertical'.
-    The classification is based on the relative magnitudes of the x and y components.
+    to classify its direction as one of four cardinal directions: "left", "right", "up", or "down".
+    The classification is based on which component (x or y) has the larger absolute value,
+    and the sign of that component.
 
     Args:
         pc (list or np.array): A 2D principal component vector [x, y]
 
     Returns:
-        str: Orientation of the vector, one of 'horizontal' or 'vertical'
+        str: Direction of the vector, one of "left", "right", "up", or "down"
 
     Example:
         >>> get_pc_direction([1, 0.1])
-        'horizontal'
+        'right'
+        >>> get_pc_direction([-1, 0.1])
+        'left'
         >>> get_pc_direction([0.1, 1])
-        'vertical'
+        'down'
+        >>> get_pc_direction([0.1, -1])
+        'up'
+
+    Note:
+        - If |x| >= |y|: returns "right" (x >= 0) or "left" (x < 0)
+        - If |y| > |x|: returns "down" (y >= 0) or "up" (y < 0)
     """
     x, y = pc
     if abs(x) >= abs(y):
