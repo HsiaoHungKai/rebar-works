@@ -156,55 +156,110 @@ def norm_radian(radian, pi=m.pi):
     return radian if abs(radian) <= pi else radian - (1 if radian >= 0 else -1) * 2 * pi
 
 
-def get_circular_outlier_indices(radians, coef=1.5):
+def get_circular_outlier_indices(radians, threshold: float = 1.5):
     """
     Identifies outlier indices in a list of angles using circular statistics.
 
     This function computes the circular mean and circular standard deviation of the input angles,
-    then flags as outliers any angles whose deviation from the mean exceeds (coef * circular std).
+    then flags as outliers any angles whose deviation from the mean exceeds (threshold * circular std).
     Useful for filtering out lines or vectors whose orientation is inconsistent with the main group.
 
     Args:
         radians (list or np.ndarray): List/array of angles in radians (e.g., from np.arctan2).
-        coef (float): Multiplier for the circular standard deviation to set the outlier threshold. Default is 1.5.
+        threshold (float): Multiplier for the circular standard deviation to set the outlier threshold. Default is 1.5.
 
     Returns:
         list: Indices of input angles that are considered outliers.
 
     Example:
         >>> radians = [0.1, 0.2, 0.15, 3.0]
-        >>> outliers = get_circular_outlier_indices(radians, coef=1.5)
+        >>> outliers = get_circular_outlier_indices(radians, threshold=1.5)
         >>> print(outliers)
         [3]
     """
-    radians = [2 * radian for radian in radians]
-    mean = circmean(radians, high=m.pi, low=-m.pi)
-    maxdelta = coef * circstd(radians, high=m.pi, low=-m.pi)
-    deltas = [norm_radian(radian - mean) for radian in radians]
-    outlier_indices = [
-        i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
-    ]
+    outlier_indices = []
+    if threshold:
+        radians = [2 * radian for radian in radians]
+        mean = circmean(radians, high=m.pi, low=-m.pi)
+        maxdelta = threshold * circstd(radians, high=m.pi, low=-m.pi)
+        deltas = [norm_radian(radian - mean) for radian in radians]
+        outlier_indices = [
+            i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
+        ]
     return outlier_indices
 
 
-def remove_outliers_using_std(shapes, points, pc_direction, threshold: float = 1.5):
+def get_mode_outlier_indices(radians, threshold: float = 10):
     """
-    Removes outlier line segments based on their orientation using circular statistics.
+    Identifies outlier indices in a list of angles using histogram-based mode detection.
 
-    This function analyzes the angles of line segments (defined by 'points') and removes those
-    whose orientation deviates significantly from the main group, as determined by circular
-    statistics (mean and standard deviation on the unit circle). The remaining (inlier) segments
-    are then added to the 'shapes' list in a format suitable for JSON export.
+    This function computes a histogram of the input angles, finds the mode (most frequent bin),
+    and flags as outliers any angles whose deviation from the mode exceeds the specified threshold.
+    This approach is useful for filtering out lines or vectors whose orientation is inconsistent
+    with the most common direction in the dataset.
 
     Args:
+        radians (list or np.ndarray): List/array of angles in radians (e.g., from np.arctan2).
+        threshold (float, optional): Angular threshold in degrees from the mode. Default is 10.
+
+    Returns:
+        list: Indices of input angles that are considered outliers.
+
+    Example:
+        >>> radians = [0.1, 0.15, 0.12, 1.5, 0.11]  # Most angles around 0.1, one at 1.5
+        >>> outliers = get_mode_outlier_indices(radians, threshold=15)
+        >>> print(outliers)
+        [3]  # Index of the 1.5 radian angle
+    """
+    outlier_indices = []
+    if threshold:
+        bins = 45
+        # Compute histogram
+        hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
+        # Find the index of the bin with the most values
+        max_bin_index = np.argmax(hist)
+        mode = bin_edges[max_bin_index]
+
+        threshold = threshold * m.pi / 180
+        outlier_indices = [
+            i
+            for i, radian in enumerate(radians)
+            if abs(norm_radian(radian - mode)) > threshold
+        ]
+
+    return outlier_indices
+
+
+def remove_outliers(operation, shapes, points, pc_direction, threshold):
+    """
+    Removes outlier line segments based on their orientation using a specified outlier detection method.
+
+    This function provides a flexible interface for outlier removal by accepting different outlier
+    detection operations (e.g., circular statistics or mode-based). It analyzes the angles of line
+    segments, applies the specified outlier detection method, removes outliers, and adds the
+    remaining (inlier) segments to the shapes list in JSON-compatible format.
+
+    Args:
+        operation (function): Outlier detection function that takes (radians, threshold) and returns indices.
+                             Examples: get_circular_outlier_indices, get_mode_outlier_indices
         shapes (list): The list to which inlier line dictionaries will be appended.
         points (list): List of line segments, each as [[x1, y1], [x2, y2]].
         pc_direction (str): Principal component direction ("left", "right", "up", or "down").
-        threshold (float, optional): Outlier threshold as a multiple of circular standard deviation.
-                                     Default is 1.5.
+        threshold (float, optional): Outlier threshold passed to the operation function. Default is 1.5.
 
     Returns:
         list: The updated 'shapes' list with inlier line segments added.
+
+    Example:
+        >>> shapes = []
+        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [2, 0.1]]]
+        >>> remove_outliers(get_circular_outlier_indices, shapes, points, "right", 1.5)
+        # shapes now contains only the lines that are not outliers according to circular statistics
+
+    Note:
+        - The operation function should return a list of outlier indices
+        - All coordinates are converted to float for JSON serialization
+        - The orientation is determined by horizontal_or_vertical(pc_direction)
     """
     if threshold:
         radians = []
@@ -216,7 +271,7 @@ def remove_outliers_using_std(shapes, points, pc_direction, threshold: float = 1
             radian = np.arctan2(vector[1], vector[0])
             radians.append(radian)
         # Remove outliers
-        outlier_indices = get_circular_outlier_indices(radians, coef=threshold)
+        outlier_indices = operation(radians, threshold=threshold)
         points = [points[i] for i in range(len(points)) if i not in outlier_indices]
 
     # Add points to shapes
@@ -235,61 +290,7 @@ def remove_outliers_using_std(shapes, points, pc_direction, threshold: float = 1
     return shapes
 
 
-def remove_outliers_using_mode(shapes, points, pc_direction, threshold: float = 10):
-    """
-    Removes outlier line segments based on their orientation using a mode-based approach.
-
-    This function analyzes the angles of line segments (defined by 'points') and removes those
-    whose orientation deviates significantly from the most common angle (mode). The remaining
-    (inlier) segments are then added to the 'shapes' list in a format suitable for JSON export.
-
-    Args:
-        shapes (list): The list to which inlier line dictionaries will be appended.
-        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
-        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
-        threshold (float, optional): Outlier threshold in degrees from the mode angle. Default is 10.
-
-    Returns:
-        list: The updated 'shapes' list with inlier line segments added.
-    """
-    if threshold:
-        radians = []
-        for shape in points:
-            point1 = np.array(shape[0])
-            point2 = np.array(shape[1])
-            # Because we detect vertex using pc, so the direction will be pretty much same
-            vector = point2 - point1
-            radian = np.arctan2(vector[1], vector[0])
-            radians.append(radian)
-
-        bins = 45
-        # Compute histogram
-        hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
-        # Find the index of the bin with the most values
-        max_bin_index = np.argmax(hist)
-        mode = bin_edges[max_bin_index]
-        
-        threshold = threshold * m.pi / 180
-        outlier_indices = [i for i, radian in enumerate(radians) if abs(norm_radian(radian - mode)) > threshold]
-        points = [points[i] for i in range(len(points)) if i not in outlier_indices]
-
-    # Add points to shapes
-    for points in points:
-        shapes.append(
-            {
-                "points": [
-                    [float(points[0][0]), float(points[0][1])],
-                    [float(points[1][0]), float(points[1][1])],
-                ],
-                "orientation": horizontal_or_vertical(pc_direction),
-                "shape_type": "line",
-            }
-        )
-
-    return shapes
-
-
-def get_lines(image, model_path, threshold: float = 0) -> str:
+def get_lines(image, model_path, threshold) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
@@ -387,12 +388,19 @@ def get_lines(image, model_path, threshold: float = 0) -> str:
             points = get_points_from_direction(start, end, direction)
             pc2_points.append(points)
 
-    # Removing outliers depending on the radian of vector for pc1_points and pc2_points using circular statistics
-    # remove_outliers_using_std(shapes, pc1_points, pc_direction["pc1"], threshold)
-    # remove_outliers_using_std(shapes, pc2_points, pc_direction["pc2"], threshold)
-    threshold = 10
-    remove_outliers_using_mode(shapes, pc1_points, pc_direction["pc1"], threshold)
-    remove_outliers_using_mode(shapes, pc2_points, pc_direction["pc2"], threshold)
+    # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
+    remove_outliers(
+        get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    )
+    remove_outliers(
+        get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    )
+    # remove_outliers(
+    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    # )
+    # remove_outliers(
+    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    # )
 
     return json.dumps({"shapes": shapes}, indent=2)
 
