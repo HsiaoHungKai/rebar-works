@@ -2,7 +2,6 @@ from ultralytics import YOLO
 import torch
 from torchvision.ops import nms
 import numpy as np
-import math as m
 from scipy.stats import circmean, circstd
 import json
 
@@ -53,9 +52,9 @@ def rotate(vector, angle):
         list: Rotated vector [new_x, new_y]
     """
     [x, y] = vector
-    angler = angle * m.pi / 180
-    newx = x * m.cos(angler) - y * m.sin(angler)
-    newy = x * m.sin(angler) + y * m.cos(angler)
+    angler = angle * np.pi / 180
+    newx = x * np.cos(angler) - y * np.sin(angler)
+    newy = x * np.sin(angler) + y * np.cos(angler)
     return [newx, newy]
 
 
@@ -129,7 +128,7 @@ def vector_aligned_with_pc(
         return False
 
 
-def norm_radian(radian, pi=m.pi):
+def norm_radian(radian, pi=np.pi):
     """
     Normalizes an angle in radians to the range [-π, π].
 
@@ -181,8 +180,8 @@ def get_circular_outlier_indices(radians, threshold: float = 1.5):
         return []
     
     radians = [2 * radian for radian in radians]
-    mean = circmean(radians, high=m.pi, low=-m.pi)
-    maxdelta = threshold * circstd(radians, high=m.pi, low=-m.pi)
+    mean = circmean(radians, high=np.pi, low=-np.pi)
+    maxdelta = threshold * circstd(radians, high=np.pi, low=-np.pi)
     deltas = [norm_radian(radian - mean) for radian in radians]
     outlier_indices = [
         i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
@@ -218,12 +217,12 @@ def get_mode_outlier_indices(radians, threshold: float = 10):
     
     bins = 36
     # Compute histogram
-    hist, bin_edges = np.histogram(radians, bins=bins, range=(-m.pi, m.pi))
+    hist, bin_edges = np.histogram(radians, bins=bins, range=(-np.pi, np.pi))
     # Find the index of the bin with the most values
     max_bin_index = np.argmax(hist)
-    mode = bin_edges[max_bin_index] + (m.pi / bins) # Center of the mode bin
+    mode = bin_edges[max_bin_index] + (np.pi / bins) # Center of the mode bin
 
-    threshold = threshold * m.pi / 180
+    threshold = threshold * np.pi / 180
     outlier_indices = [
         i
         for i, radian in enumerate(radians)
