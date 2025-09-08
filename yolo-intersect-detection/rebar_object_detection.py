@@ -2,6 +2,8 @@ from ultralytics import YOLO
 import torch
 from torchvision.ops import nms
 import numpy as np
+from cv2 import imread
+from skimage.transform import hough_line, hough_line_peaks
 from scipy.stats import circmean, circstd
 import json
 
@@ -178,7 +180,7 @@ def get_circular_outlier_indices(radians, threshold: float = 1.5):
     """
     if threshold == 0:
         return []
-    
+
     radians = [2 * radian for radian in radians]
     mean = circmean(radians, high=np.pi, low=-np.pi)
     maxdelta = threshold * circstd(radians, high=np.pi, low=-np.pi)
@@ -186,7 +188,7 @@ def get_circular_outlier_indices(radians, threshold: float = 1.5):
     outlier_indices = [
         i for i, z in enumerate(zip(radians, deltas)) if abs(z[1]) > maxdelta
     ]
-    
+
     return outlier_indices
 
 
@@ -214,13 +216,13 @@ def get_mode_outlier_indices(radians, threshold: float = 10):
     """
     if threshold == 0:
         return []
-    
+
     bins = 36
     # Compute histogram
     hist, bin_edges = np.histogram(radians, bins=bins, range=(-np.pi, np.pi))
     # Find the index of the bin with the most values
     max_bin_index = np.argmax(hist)
-    mode = bin_edges[max_bin_index] + (np.pi / bins) # Center of the mode bin
+    mode = bin_edges[max_bin_index] + (np.pi / bins)  # Center of the mode bin
 
     threshold = threshold * np.pi / 180
     outlier_indices = [
@@ -234,34 +236,42 @@ def get_mode_outlier_indices(radians, threshold: float = 10):
 
 def remove_outliers(operation, shapes, points, pc_direction, threshold):
     """
-    Removes outlier line segments based on their orientation using a specified outlier detection method.
+    Filters out outlier line segments based on their angular orientation using statistical analysis.
 
-    This function provides a flexible interface for outlier removal by accepting different outlier
-    detection operations (e.g., circular statistics or mode-based). It analyzes the angles of line
-    segments, applies the specified outlier detection method, removes outliers, and adds the
-    remaining (inlier) segments to the shapes list in JSON-compatible format.
+    This function analyzes the orientation angles of line segments and removes those that 
+    significantly deviate from the main directional pattern. It uses a specified outlier 
+    detection method to identify and filter out inconsistent line orientations, returning 
+    only the cleaned list of line segments.
 
     Args:
-        operation (function): Outlier detection function that takes (radians, threshold) and returns indices.
+        operation (function): Outlier detection function that accepts (radians, threshold) 
+                             and returns a list of outlier indices.
                              Examples: get_circular_outlier_indices, get_mode_outlier_indices
-        shapes (list): The list to which inlier line dictionaries will be appended.
-        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
-        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
-        threshold (float, optional): Outlier threshold passed to the operation function. Default is 1.5.
+        shapes (list): Legacy parameter (not used in current implementation)
+        points (list): Collection of line segments, each formatted as [[x1, y1], [x2, y2]]
+        pc_direction (str): Principal component direction ("left", "right", "up", "down")
+        threshold (float or None): Statistical threshold for outlier detection. 
+                                  If None or 0, no filtering is performed.
 
     Returns:
-        list: The updated 'shapes' list with inlier line segments added.
+        list: Filtered list of line segments with outliers removed, maintaining the 
+              same format as the input points parameter.
+
+    Process:
+        1. Calculate the angle of each line segment using np.arctan2
+        2. Apply the specified outlier detection operation on the angle array
+        3. Remove line segments whose indices are flagged as outliers
+        4. Return the cleaned list of line segments
 
     Example:
-        >>> shapes = []
-        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [2, 0.1]]]
-        >>> remove_outliers(get_circular_outlier_indices, shapes, points, "right", 1.5)
-        # shapes now contains only the lines that are not outliers according to circular statistics
+        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0.1]]]
+        >>> clean_points = remove_outliers(get_circular_outlier_indices, [], points, "right", 1.5)
+        # Returns points with outlier orientations removed based on circular statistics
 
     Note:
-        - The operation function should return a list of outlier indices
-        - All coordinates are converted to float for JSON serialization
-        - The orientation is determined by horizontal_or_vertical(pc_direction)
+        - The 'shapes' parameter is retained for backward compatibility but not used
+        - Threshold of None or 0 bypasses outlier detection entirely
+        - Angles are computed using the vector from first to second point of each line segment
     """
     if threshold:
         radians = []
@@ -276,7 +286,35 @@ def remove_outliers(operation, shapes, points, pc_direction, threshold):
         outlier_indices = operation(radians, threshold=threshold)
         points = [points[i] for i in range(len(points)) if i not in outlier_indices]
 
-    # Add points to shapes
+    return points
+
+
+def add_points_to_shapes(shapes, points, pc_direction):
+    """
+    Adds line segments to the shapes list in JSON-compatible format.
+
+    This function takes a list of line segments defined by their endpoints and appends
+    them to the provided shapes list. Each line segment is represented as a dictionary
+    containing the points, orientation (horizontal or vertical), and shape type.
+
+    Args:
+        shapes (list): The list to which line dictionaries will be appended.
+        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
+        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
+
+    Returns:
+        list: The updated 'shapes' list with the new line segments added.
+
+    Example:
+        >>> shapes = []
+        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]]]
+        >>> add_points_to_shapes(shapes, points, "right")
+        # shapes now contains the two lines with appropriate orientation
+
+    Note:
+        - All coordinates are converted to float for JSON serialization
+        - The orientation is determined by horizontal_or_vertical(pc_direction)
+    """
     for points in points:
         shapes.append(
             {
@@ -292,7 +330,7 @@ def remove_outliers(operation, shapes, points, pc_direction, threshold):
     return shapes
 
 
-def get_lines(image, model_path, threshold) -> str:
+def get_lines(image, model_path, threshold=None) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
@@ -391,20 +429,52 @@ def get_lines(image, model_path, threshold) -> str:
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
+    pc1_points = remove_outliers(
+        get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    )
+    pc2_points = remove_outliers(
+        get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    )
     # remove_outliers(
-    #     get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
     # )
     # remove_outliers(
-    #     get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     # )
-    remove_outliers(
-        get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
-    )
-    remove_outliers(
-        get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
-    )
+    add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
+    add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
+
+    # # Use Hough Transform to prune lines
+    # # Rasterize into an image
+    # height, width = imread(image).shape[:2]
+    # canvas = np.zeros((height, width), dtype=np.uint8)
+    # for x, y in vertices:
+    #     x_int, y_int = int(x), int(y)
+    #     canvas[y_int, x_int] = 1
+    # # Perform Hough Transform
+    # hspace, angles, dists = hough_line(canvas)
+    # # Find peaks
+    # _, thetas, rhos = hough_line_peaks(hspace, angles, dists)
+    # hough_lines = set()
+    # for theta, rho in zip(thetas, rhos):
+    #     hough_lines.add((theta, rho))
+    # # Remove lines that do not align with any of the Hough lines
+    # indices_to_keep = []
+    # for i, point in enumerate(pc1_points):
+    #     x1, y1 = point[0]
+    #     x2, y2 = point[1]
+    #     for theta, rho in hough_lines:
+    #         if point_on_hough_line(x1, y1, theta, rho) and point_on_hough_line(
+    #             x2, y2, theta, rho
+    #         ):
+    #             indices_to_keep.append(i)
+    
 
     return json.dumps({"shapes": shapes}, indent=2)
+
+
+def point_on_hough_line(x, y, theta, rho, tolerance=1e-6):
+    return abs(x * np.cos(theta) + y * np.sin(theta) - rho) < tolerance
 
 
 def get_pc_direction(pc) -> str:
