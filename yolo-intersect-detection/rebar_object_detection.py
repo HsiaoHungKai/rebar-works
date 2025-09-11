@@ -238,23 +238,23 @@ def remove_outliers(operation, shapes, points, pc_direction, threshold):
     """
     Filters out outlier line segments based on their angular orientation using statistical analysis.
 
-    This function analyzes the orientation angles of line segments and removes those that 
-    significantly deviate from the main directional pattern. It uses a specified outlier 
-    detection method to identify and filter out inconsistent line orientations, returning 
+    This function analyzes the orientation angles of line segments and removes those that
+    significantly deviate from the main directional pattern. It uses a specified outlier
+    detection method to identify and filter out inconsistent line orientations, returning
     only the cleaned list of line segments.
 
     Args:
-        operation (function): Outlier detection function that accepts (radians, threshold) 
+        operation (function): Outlier detection function that accepts (radians, threshold)
                              and returns a list of outlier indices.
                              Examples: get_circular_outlier_indices, get_mode_outlier_indices
         shapes (list): Legacy parameter (not used in current implementation)
         points (list): Collection of line segments, each formatted as [[x1, y1], [x2, y2]]
         pc_direction (str): Principal component direction ("left", "right", "up", "down")
-        threshold (float or None): Statistical threshold for outlier detection. 
+        threshold (float or None): Statistical threshold for outlier detection.
                                   If None or 0, no filtering is performed.
 
     Returns:
-        list: Filtered list of line segments with outliers removed, maintaining the 
+        list: Filtered list of line segments with outliers removed, maintaining the
               same format as the input points parameter.
 
     Process:
@@ -435,19 +435,17 @@ def get_lines(image, model_path, threshold=None) -> str:
     pc2_points = remove_outliers(
         get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     )
-    # remove_outliers(
+    # pc1_points = remove_outliers(
     #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
     # )
-    # remove_outliers(
+    # pc2_points = remove_outliers(
     #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     # )
-    add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
-    add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
 
     # # Use Hough Transform to prune lines
     # # Rasterize into an image
     # height, width = imread(image).shape[:2]
-    # canvas = np.zeros((height, width), dtype=np.uint8)
+    # canvas = np.zeros((height, width), dtype=np.float32)
     # for x, y in vertices:
     #     x_int, y_int = int(x), int(y)
     #     canvas[y_int, x_int] = 1
@@ -455,9 +453,9 @@ def get_lines(image, model_path, threshold=None) -> str:
     # hspace, angles, dists = hough_line(canvas)
     # # Find peaks
     # _, thetas, rhos = hough_line_peaks(hspace, angles, dists)
-    # hough_lines = set()
+    # hough_lines = []
     # for theta, rho in zip(thetas, rhos):
-    #     hough_lines.add((theta, rho))
+    #     hough_lines.append((theta, rho))
     # # Remove lines that do not align with any of the Hough lines
     # indices_to_keep = []
     # for i, point in enumerate(pc1_points):
@@ -468,12 +466,16 @@ def get_lines(image, model_path, threshold=None) -> str:
     #             x2, y2, theta, rho
     #         ):
     #             indices_to_keep.append(i)
-    
+    # pc1_points = [pc1_points[i] for i in range(len(pc1_points)) if i in indices_to_keep]
+    # print(pc1_points)
+
+    add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
+    add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
 
     return json.dumps({"shapes": shapes}, indent=2)
 
 
-def point_on_hough_line(x, y, theta, rho, tolerance=1e-6):
+def point_on_hough_line(x, y, theta, rho, tolerance=1e-2):
     return abs(x * np.cos(theta) + y * np.sin(theta) - rho) < tolerance
 
 
