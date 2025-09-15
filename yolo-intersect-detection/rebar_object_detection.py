@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import torch
 from torchvision.ops import nms
 import numpy as np
-from cv2 import imread
+import cv2
 from skimage.transform import hough_line, hough_line_peaks
 from scipy.stats import circmean, circstd
 import json
@@ -435,39 +435,87 @@ def get_lines(image, model_path, threshold=None) -> str:
     # pc2_points = remove_outliers(
     #     get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     # )
-    pc1_points = remove_outliers(
-        get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    # pc1_points = remove_outliers(
+    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    # )
+    # pc2_points = remove_outliers(
+    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    # )
+    
+    # Perform Hough Transform pruning on pc1
+    lines = []
+    pruned_pc1 = remove_outliers(
+        get_mode_outlier_indices, lines, pc1_points, pc_direction["pc1"], threshold
     )
-    pc2_points = remove_outliers(
-        get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
-    )
+    
+    image = cv2.imread(image)
+    height, width = image.shape[:2]
+    canvas = np.zeros((height, width), dtype=np.float32)
+    for points in pruned_pc1:
+        pt1 = (int(points[0][0]), int(points[0][1]))
+        pt2 = (int(points[1][0]), int(points[1][1]))
+        
+        # Draw line on canvas with thickness
+        cv2.line(canvas, pt1, pt2, 255, thickness=3)
+        
+    # Get Hough Transform data
+    hspace, angles, dists = hough_line(canvas)
+    # Find peaks
+    accum, angles_peaks, dists_peaks = hough_line_peaks(hspace, angles, dists, threshold=0.5 * np.max(hspace))
 
-    # # Use Hough Transform to prune lines
-    # # Rasterize into an image
-    # height, width = imread(image).shape[:2]
-    # canvas = np.zeros((height, width), dtype=np.float32)
-    # for x, y in vertices:
-    #     x_int, y_int = int(x), int(y)
-    #     canvas[y_int, x_int] = 1
-    # # Perform Hough Transform
-    # hspace, angles, dists = hough_line(canvas)
-    # # Find peaks
-    # _, thetas, rhos = hough_line_peaks(hspace, angles, dists)
-    # hough_lines = []
-    # for theta, rho in zip(thetas, rhos):
-    #     hough_lines.append((theta, rho))
-    # # Remove lines that do not align with any of the Hough lines
-    # indices_to_keep = []
-    # for i, point in enumerate(pc1_points):
-    #     x1, y1 = point[0]
-    #     x2, y2 = point[1]
-    #     for theta, rho in hough_lines:
-    #         if point_on_hough_line(x1, y1, theta, rho) and point_on_hough_line(
-    #             x2, y2, theta, rho
-    #         ):
-    #             indices_to_keep.append(i)
-    # pc1_points = [pc1_points[i] for i in range(len(pc1_points)) if i in indices_to_keep]
-    # print(pc1_points)
+    radians = []
+    for theta in angles_peaks:
+        radian = norm_radian(theta + np.pi / 2, pi=np.pi)
+        radians.append(radian)
+    diff = np.ptp(radians)
+    if diff > np.pi / 2:
+        for i in range(len(radians)):
+            if radians[i] > np.pi / 2:
+                radians[i] = norm_radian(radians[i] + np.pi, pi=np.pi)
+    min_radian, max_radian = np.min(radians), np.max(radians)
+    
+    tolerance_degrees = 5
+    tolerance_rad = tolerance_degrees * np.pi / 180
+    expanded_min = min_radian - tolerance_rad
+    expanded_max = max_radian + tolerance_rad
+    
+    print("pc1", pc1_points)
+    indices = []
+    for i, points in enumerate(pc1_points):
+        point1 = np.array(points[0])
+        point2 = np.array(points[1])
+        # Calculate the angle of the line
+        vector = point2 - point1
+        radian = np.arctan2(vector[1], vector[0])
+        if expanded_min <= radian <= expanded_max or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max:
+            indices.append(i)
+    print(indices)
+    pc1_points = [pc1_points[i] for i in range(len(pc1_points)) if i in indices]
+    
+
+    print("Detected lines (rho, theta):")
+    for rho, theta in zip(dists_peaks, angles_peaks):
+        # a = np.cos(theta)
+        # b = np.sin(theta)
+
+        # x0 = rho * a
+        # y0 = rho * b
+        
+        # # Calculate line endpoints
+        # x1 = int(x0 + width * (-b))
+        # y1 = int(y0 + height * (a))
+        # x2 = int(x0 - width * (-b))
+        # y2 = int(y0 - height * (a))
+
+        # # Draw the line on top of the original image
+        # plt.plot([x1, x2], [y1, y2], '-r', linewidth=0.5, alpha=0.8)
+        
+        print(f"Line: rho={rho:.2f}, theta={theta:.2f}")    
+    print("max_radian: ", max_radian)
+    print("min radian: ", min_radian)
+    
+    print(pc1_points)
+
 
     add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
     add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
