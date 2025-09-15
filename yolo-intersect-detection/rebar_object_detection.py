@@ -429,18 +429,18 @@ def get_lines(image, model_path, threshold=None) -> str:
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
-    pc1_points = remove_outliers(
-        get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
-    )
-    pc2_points = remove_outliers(
-        get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
-    )
     # pc1_points = remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    #     get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
     # )
     # pc2_points = remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    #     get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
     # )
+    pc1_points = remove_outliers(
+        get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    )
+    pc2_points = remove_outliers(
+        get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    )
 
     # # Use Hough Transform to prune lines
     # # Rasterize into an image
