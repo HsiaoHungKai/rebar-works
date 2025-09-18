@@ -283,12 +283,48 @@ def remove_outliers(operation, points, threshold):
     return points
 
 
-def prune_lines_using_hough_transform(image, pc_points, pc_direction, threshold):
+def prune_lines_using_hough_transform(image_path, pc_points, threshold):
+    """
+    Filters line segments using Hough transform analysis to remove lines with inconsistent orientations.
+
+    This function performs a two-stage filtering process:
+    1. Initial statistical outlier removal using mode-based angle filtering
+    2. Hough transform analysis to determine the dominant line orientations in the image
+    3. Final filtering to keep only lines whose angles fall within the detected orientation range
+
+    The process works by:
+    - Drawing the initially filtered lines on a canvas
+    - Applying Hough transform to detect dominant line orientations
+    - Finding angle peaks that represent the most prominent line directions
+    - Filtering the original line segments to keep only those aligned with detected orientations
+
+    Args:
+        image_path (str): Path to the input image file
+        pc_points (list): List of line segments where each segment is [[x1, y1], [x2, y2]]
+        threshold (float): Statistical threshold for initial mode-based outlier removal.
+                          If 0 or None, no initial filtering is performed.
+
+    Returns:
+        list: Filtered list of line segments that align with the dominant orientations
+              detected by the Hough transform, preserving the original [[x1, y1], [x2, y2]] format
+
+    Example:
+        >>> lines = [[[0, 0], [10, 1]], [[5, 5], [15, 6]], [[0, 0], [1, 10]]]
+        >>> filtered = prune_lines_using_hough_transform('image.jpg', lines, 10)
+        # Returns only lines that align with the dominant horizontal orientation
+        # detected by the Hough transform
+
+    Note:
+        - Uses a 5-degree tolerance around the detected angle range for final filtering
+        - Handles angle wrapping around π/-π boundary by checking both angle and angle+π
+        - Canvas thickness of 3 pixels is used for reliable Hough transform detection
+        - Hough peaks threshold is set to 50% of maximum accumulator value
+    """
     # Perform Hough Transform pruning on pc
     pruned_pc = remove_outliers(get_mode_outlier_indices, pc_points, threshold)
 
-    image = cv2.imread(image)
-    height, width = image.shape[:2]
+    image_path = cv2.imread(image_path)
+    height, width = image_path.shape[:2]
     canvas = np.zeros((height, width), dtype=np.float32)
     for points in pruned_pc:
         pt1 = (int(points[0][0]), int(points[0][1]))
@@ -378,35 +414,51 @@ def add_points_to_shapes(shapes, points, pc_direction):
     return shapes
 
 
-def get_lines(image, model_path, threshold=0) -> str:
+def get_lines(image_path, model_path, threshold: float = 10) -> str:
     """
     Detects rebar intersections in an image and generates connection lines using PCA alignment.
 
-    This function performs the following steps:
-    1. Uses YOLO model to detect rebar intersection bounding boxes
-    2. Extracts center points (vertices) from bounding boxes
-    3. Applies Principal Component Analysis (PCA) to find dominant directions
-    4. For each vertex, finds the nearest neighbors aligned with PC1 and PC2 directions
-    5. Perform outlier detection to remove improper connections
-    6. Generates line connections between aligned vertices
+    This function performs comprehensive rebar intersection detection and line generation through
+    a multi-stage process:
+
+    1. **Object Detection**: Uses YOLO model to detect rebar intersection bounding boxes
+    2. **Vertex Extraction**: Extracts center points (vertices) from detected bounding boxes
+    3. **Principal Component Analysis**: Applies PCA to identify the two dominant directional patterns
+    4. **Neighbor Finding**: For each vertex, finds nearest neighbors aligned with PC1 and PC2 directions
+    5. **Line Generation**: Creates line segments connecting aligned vertices using bounding box edges
+    6. **Outlier Filtering**: Applies Hough transform-based pruning to remove inconsistent lines
+    7. **JSON Formatting**: Structures results as labeled line shapes with orientation metadata
+
+    The algorithm ensures that generated lines connect actual rebar intersections by:
+    - Using 30-degree tolerance cones for directional alignment checking
+    - Connecting bounding box edges rather than centers for more accurate line placement
+    - Applying statistical outlier detection to remove spurious connections
+    - Using Hough transform analysis to validate line orientations against image data
 
     Args:
-        image: Input image (can be file path string, numpy array, or PIL image)
+        image_path (str): Path to the input image file (supports common formats: jpg, png, etc.)
         model_path (str): Path to the trained YOLO model weights file (.pt format)
-        threshold (float, optional): Threshold for outlier detection
+        threshold (float, optional): Statistical threshold for mode-based outlier detection.
+                                   Higher values are more permissive. Default is 10 degrees.
 
     Returns:
-        str: JSON string containing line shapes in the format:
+        str: JSON string containing detected line shapes in the format:
              {
                "shapes": [
                  {
                    "points": [[x1, y1], [x2, y2]],
-                   "orientation": "horizontal" | "vertical",
+                   "orientation": "horizontal" | "vertical", 
                    "shape_type": "line"
                  },
                  ...
                ]
              }
+
+    Example:
+        >>> json_result = get_lines('image_path.jpg', 'model.pt', threshold=15)
+        >>> import json
+        >>> data = json.loads(json_result)
+        >>> print(f"Found {len(data['shapes'])} line connections")
     """
     vertices = []
     shapes = []
@@ -414,7 +466,7 @@ def get_lines(image, model_path, threshold=0) -> str:
     pc2_points = []
 
     # Get bounding boxes from the image using the model
-    bounding_boxes = get_bounding_boxes(image, model_path)
+    bounding_boxes = get_bounding_boxes(image_path, model_path)
     vertices = []
     for box in bounding_boxes:
         x_center = (box[0] + box[2]) / 2
@@ -492,10 +544,10 @@ def get_lines(image, model_path, threshold=0) -> str:
 
     # Perform Hough Transform pruning on pc1_points and pc2_points
     pc1_points = prune_lines_using_hough_transform(
-        image, pc1_points, pc_direction["pc1"], threshold=threshold
+        image_path, pc1_points, threshold=threshold
     )
     pc2_points = prune_lines_using_hough_transform(
-        image, pc2_points, pc_direction["pc2"], threshold=threshold
+        image_path, pc2_points, threshold=threshold
     )
 
     add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
