@@ -283,7 +283,7 @@ def remove_outliers(operation, points, threshold):
     return points
 
 
-def prune_lines_using_hough_transform(image_path, pc_points, threshold):
+def prune_lines_using_hough_transform(image_path, points, threshold):
     """
     Filters line segments using Hough transform analysis to remove lines with inconsistent orientations.
 
@@ -309,8 +309,8 @@ def prune_lines_using_hough_transform(image_path, pc_points, threshold):
               detected by the Hough transform, preserving the original [[x1, y1], [x2, y2]] format
 
     Example:
-        >>> lines = [[[0, 0], [10, 1]], [[5, 5], [15, 6]], [[0, 0], [1, 10]]]
-        >>> filtered = prune_lines_using_hough_transform('image.jpg', lines, 10)
+        >>> pc1_points = [[[0, 0], [10, 1]], [[5, 5], [15, 6]], [[0, 0], [1, 10]]]
+        >>> filtered = prune_lines_using_hough_transform('image.jpg', pc1_points, 10)
         # Returns only lines that align with the dominant horizontal orientation
         # detected by the Hough transform
 
@@ -321,14 +321,14 @@ def prune_lines_using_hough_transform(image_path, pc_points, threshold):
         - Hough peaks threshold is set to 50% of maximum accumulator value
     """
     # Perform Hough Transform pruning on pc
-    pruned_pc = remove_outliers(get_mode_outlier_indices, pc_points, threshold)
+    pruned_points = remove_outliers(get_mode_outlier_indices, points, threshold)
 
     image_path = cv2.imread(image_path)
     height, width = image_path.shape[:2]
     canvas = np.zeros((height, width), dtype=np.float32)
-    for points in pruned_pc:
-        pt1 = (int(points[0][0]), int(points[0][1]))
-        pt2 = (int(points[1][0]), int(points[1][1]))
+    for bounding_box in pruned_points:
+        pt1 = (int(bounding_box[0][0]), int(bounding_box[0][1]))
+        pt2 = (int(bounding_box[1][0]), int(bounding_box[1][1]))
 
         # Draw line on canvas with thickness
         cv2.line(canvas, pt1, pt2, 255, thickness=3)
@@ -357,9 +357,9 @@ def prune_lines_using_hough_transform(image_path, pc_points, threshold):
     expanded_max = max_radian + tolerance_rad
 
     indices = []
-    for i, points in enumerate(pc_points):
-        point1 = np.array(points[0])
-        point2 = np.array(points[1])
+    for i, bounding_box in enumerate(points):
+        point1 = np.array(bounding_box[0])
+        point2 = np.array(bounding_box[1])
         # Calculate the angle of the line
         vector = point2 - point1
         radian = np.arctan2(vector[1], vector[0])
@@ -368,9 +368,9 @@ def prune_lines_using_hough_transform(image_path, pc_points, threshold):
             or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max
         ):
             indices.append(i)
-    pc_points = [pc_points[i] for i in range(len(pc_points)) if i in indices]
+    points = [points[i] for i in range(len(points)) if i in indices]
 
-    return pc_points
+    return points
 
 
 def add_points_to_shapes(shapes, points, pc_direction):
@@ -432,7 +432,7 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     The algorithm ensures that generated lines connect actual rebar intersections by:
     - Using 30-degree tolerance cones for directional alignment checking
     - Connecting bounding box edges rather than centers for more accurate line placement
-    - Applying statistical outlier detection to remove spurious connections
+    - Applying outlier detection to remove spurious connections
     - Using Hough transform analysis to validate line orientations against image data
 
     Args:
@@ -447,7 +447,7 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
                 "shapes": [
                     {
                     "points": [[x1, y1], [x2, y2]],
-                    "orientation": "horizontal" | "vertical", 
+                    "orientation": "horizontal" | "vertical",
                     "shape_type": "line"
                     },
                     ...
