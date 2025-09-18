@@ -234,44 +234,38 @@ def get_mode_outlier_indices(radians, threshold: float = 10):
     return outlier_indices
 
 
-def remove_outliers(operation, shapes, points, pc_direction, threshold):
+def remove_outliers(operation, points, threshold):
     """
-    Filters out outlier line segments based on their angular orientation using statistical analysis.
+    Removes outlier line segments based on their angular orientation using statistical methods.
 
-    This function analyzes the orientation angles of line segments and removes those that
-    significantly deviate from the main directional pattern. It uses a specified outlier
-    detection method to identify and filter out inconsistent line orientations, returning
-    only the cleaned list of line segments.
+    This function calculates the angle of each line segment and applies a specified outlier
+    detection algorithm to identify and filter out lines whose orientations deviate
+    significantly from the main directional pattern in the dataset.
 
     Args:
-        operation (function): Outlier detection function that accepts (radians, threshold)
-                             and returns a list of outlier indices.
+        operation (callable): Outlier detection function that takes (radians, threshold)
+                             and returns indices of outlier angles.
                              Examples: get_circular_outlier_indices, get_mode_outlier_indices
-        shapes (list): Legacy parameter (not used in current implementation)
-        points (list): Collection of line segments, each formatted as [[x1, y1], [x2, y2]]
-        pc_direction (str): Principal component direction ("left", "right", "up", "down")
+        points (list): List of line segments where each segment is [[x1, y1], [x2, y2]]
         threshold (float or None): Statistical threshold for outlier detection.
-                                  If None or 0, no filtering is performed.
+                                  - For circular method: multiplier for circular std deviation
+                                  - For mode method: angular threshold in degrees from mode
+                                  - If None or 0, no filtering is performed
 
     Returns:
-        list: Filtered list of line segments with outliers removed, maintaining the
-              same format as the input points parameter.
-
-    Process:
-        1. Calculate the angle of each line segment using np.arctan2
-        2. Apply the specified outlier detection operation on the angle array
-        3. Remove line segments whose indices are flagged as outliers
-        4. Return the cleaned list of line segments
+        list: Filtered list of line segments with outliers removed, preserving the original
+              [[x1, y1], [x2, y2]] format
 
     Example:
-        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0.1]]]
-        >>> clean_points = remove_outliers(get_circular_outlier_indices, [], points, "right", 1.5)
-        # Returns points with outlier orientations removed based on circular statistics
+        >>> lines = [[[0, 0], [10, 1]], [[0, 0], [10, 0]], [[0, 0], [1, 10]]]
+        >>> filtered = remove_outliers(get_mode_outlier_indices, lines, 15)
+        # Removes the nearly vertical line [[[0, 0], [1, 10]]] if it deviates
+        # more than 15° from the dominant horizontal direction
 
     Note:
-        - The 'shapes' parameter is retained for backward compatibility but not used
-        - Threshold of None or 0 bypasses outlier detection entirely
-        - Angles are computed using the vector from first to second point of each line segment
+        - Line angles are computed using np.arctan2(dy, dx) from start to end point
+        - Returns original list unchanged if threshold is None or 0
+        - Preserves order of remaining line segments after outlier removal
     """
     if threshold:
         radians = []
@@ -289,27 +283,27 @@ def remove_outliers(operation, shapes, points, pc_direction, threshold):
     return points
 
 
-def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold):
+def prune_lines_using_hough_transform(image, pc_points, pc_direction, threshold):
     # Perform Hough Transform pruning on pc
-    lines = []
-    pruned_pc = remove_outliers(
-        get_mode_outlier_indices, lines, pc_points, pc_direction, threshold
-    )
-    
+    # lines = []
+    pruned_pc = remove_outliers(get_mode_outlier_indices, pc_points, threshold)
+
     image = cv2.imread(image)
     height, width = image.shape[:2]
     canvas = np.zeros((height, width), dtype=np.float32)
     for points in pruned_pc:
         pt1 = (int(points[0][0]), int(points[0][1]))
         pt2 = (int(points[1][0]), int(points[1][1]))
-        
+
         # Draw line on canvas with thickness
         cv2.line(canvas, pt1, pt2, 255, thickness=3)
-        
+
     # Get Hough Transform data
     hspace, angles, dists = hough_line(canvas)
     # Find peaks
-    _, angles_peaks, dists_peaks = hough_line_peaks(hspace, angles, dists, threshold=0.5 * np.max(hspace))
+    _, angles_peaks, dists_peaks = hough_line_peaks(
+        hspace, angles, dists, threshold=0.5 * np.max(hspace)
+    )
 
     radians = []
     for theta in angles_peaks:
@@ -333,7 +327,7 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
     expanded_max = max_radian + tolerance_rad
     print("expanded min: ", expanded_min)
     print("expanded max: ", expanded_max)
-    
+
     # print(pc_direction, pc_points)
     indices = []
     for i, points in enumerate(pc_points):
@@ -342,11 +336,13 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
         # Calculate the angle of the line
         vector = point2 - point1
         radian = np.arctan2(vector[1], vector[0])
-        if expanded_min <= radian <= expanded_max or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max:
+        if (
+            expanded_min <= radian <= expanded_max
+            or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max
+        ):
             indices.append(i)
     print(indices)
     pc_points = [pc_points[i] for i in range(len(pc_points)) if i in indices]
-    
 
     print("Detected lines (rho, theta):")
     for rho, theta in zip(dists_peaks, angles_peaks):
@@ -355,7 +351,7 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
 
         # x0 = rho * a
         # y0 = rho * b
-        
+
         # # Calculate line endpoints
         # x1 = int(x0 + width * (-b))
         # y1 = int(y0 + height * (a))
@@ -364,11 +360,11 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
 
         # # Draw the line on top of the original image
         # plt.plot([x1, x2], [y1, y2], '-r', linewidth=0.5, alpha=0.8)
-        
-        print(f"Line: rho={rho:.2f}, theta={theta:.2f}")   
-    
+
+        print(f"Line: rho={rho:.2f}, theta={theta:.2f}")
+
     # print(pc_points)
-    
+
     return pc_points
 
 
@@ -513,21 +509,25 @@ def get_lines(image, model_path, threshold=None) -> str:
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
     # pc1_points = remove_outliers(
-    #     get_circular_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    #     get_circular_outlier_indices, pc1_points, threshold
     # )
     # pc2_points = remove_outliers(
-    #     get_circular_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    #     get_circular_outlier_indices, pc2_points, threshold
     # )
     # pc1_points = remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc1_points, pc_direction["pc1"], threshold
+    #     get_mode_outlier_indices, pc1_points, threshold
     # )
     # pc2_points = remove_outliers(
-    #     get_mode_outlier_indices, shapes, pc2_points, pc_direction["pc2"], threshold
+    #     get_mode_outlier_indices, pc2_points, threshold
     # )
-    
+
     # Perform Hough Transform pruning on pc1_points and pc2_points
-    pc1_points = remove_lines_using_hough_transform(image, pc1_points, pc_direction["pc1"], threshold=0)
-    pc2_points = remove_lines_using_hough_transform(image, pc2_points, pc_direction["pc2"], threshold=0)
+    pc1_points = prune_lines_using_hough_transform(
+        image, pc1_points, pc_direction["pc1"], threshold=0
+    )
+    pc2_points = prune_lines_using_hough_transform(
+        image, pc2_points, pc_direction["pc2"], threshold=0
+    )
 
     add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
     add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
