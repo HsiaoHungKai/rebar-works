@@ -309,7 +309,7 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
     # Get Hough Transform data
     hspace, angles, dists = hough_line(canvas)
     # Find peaks
-    accum, angles_peaks, dists_peaks = hough_line_peaks(hspace, angles, dists, threshold=0.5 * np.max(hspace))
+    _, angles_peaks, dists_peaks = hough_line_peaks(hspace, angles, dists, threshold=0.5 * np.max(hspace))
 
     radians = []
     for theta in angles_peaks:
@@ -321,13 +321,20 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
             if radians[i] > np.pi / 2:
                 radians[i] = norm_radian(radians[i] + np.pi, pi=np.pi)
     min_radian, max_radian = np.min(radians), np.max(radians)
-    
+    print(pc_direction)
+    # print(radians)
+    print(angles_peaks)
+    print("min radian: ", min_radian)
+    print("max radian: ", max_radian)
+
     tolerance_degrees = 5
     tolerance_rad = tolerance_degrees * np.pi / 180
     expanded_min = min_radian - tolerance_rad
     expanded_max = max_radian + tolerance_rad
+    print("expanded min: ", expanded_min)
+    print("expanded max: ", expanded_max)
     
-    print("pc1", pc_points)
+    # print(pc_direction, pc_points)
     indices = []
     for i, points in enumerate(pc_points):
         point1 = np.array(points[0])
@@ -358,11 +365,9 @@ def remove_lines_using_hough_transform(image, pc_points, pc_direction, threshold
         # # Draw the line on top of the original image
         # plt.plot([x1, x2], [y1, y2], '-r', linewidth=0.5, alpha=0.8)
         
-        print(f"Line: rho={rho:.2f}, theta={theta:.2f}")    
-    print("max_radian: ", max_radian)
-    print("min radian: ", min_radian)
+        print(f"Line: rho={rho:.2f}, theta={theta:.2f}")   
     
-    print(pc_points)
+    # print(pc_points)
     
     return pc_points
 
@@ -521,8 +526,8 @@ def get_lines(image, model_path, threshold=None) -> str:
     # )
     
     # Perform Hough Transform pruning on pc1_points and pc2_points
-    pc1_points = remove_lines_using_hough_transform(image, pc1_points, pc_direction, threshold=5)
-    pc2_points = remove_lines_using_hough_transform(image, pc2_points, pc_direction, threshold=5)
+    pc1_points = remove_lines_using_hough_transform(image, pc1_points, pc_direction["pc1"], threshold=0)
+    pc2_points = remove_lines_using_hough_transform(image, pc2_points, pc_direction["pc2"], threshold=0)
 
     add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
     add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
