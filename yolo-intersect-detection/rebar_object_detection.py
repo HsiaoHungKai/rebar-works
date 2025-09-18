@@ -336,7 +336,7 @@ def prune_lines_using_hough_transform(image_path, pc_points, threshold):
     # Get Hough Transform data
     hspace, angles, dists = hough_line(canvas)
     # Find peaks
-    _, angles_peaks, dists_peaks = hough_line_peaks(
+    accum, angles_peaks, dists_peaks = hough_line_peaks(
         hspace, angles, dists, threshold=0.5 * np.max(hspace)
     )
 
@@ -443,16 +443,16 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
 
     Returns:
         str: JSON string containing detected line shapes in the format:
-             {
-               "shapes": [
-                 {
-                   "points": [[x1, y1], [x2, y2]],
-                   "orientation": "horizontal" | "vertical", 
-                   "shape_type": "line"
-                 },
-                 ...
-               ]
-             }
+            {
+                "shapes": [
+                    {
+                    "points": [[x1, y1], [x2, y2]],
+                    "orientation": "horizontal" | "vertical", 
+                    "shape_type": "line"
+                    },
+                    ...
+                ]
+            }
 
     Example:
         >>> json_result = get_lines('image_path.jpg', 'model.pt', threshold=15)
