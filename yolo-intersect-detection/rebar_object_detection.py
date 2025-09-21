@@ -474,7 +474,7 @@ def add_points_to_shapes(shapes, points, pc_direction):
 
 def get_lines(image_path, model_path, threshold: float = 10) -> str:
     """
-    Detects rebar intersections in an image and generates connection lines using PCA alignment.
+    Detects rebar intersections and generates grouped connection lines using PCA alignment and Hough transform analysis.
 
     This function performs comprehensive rebar intersection detection and line generation through
     a multi-stage process:
@@ -484,14 +484,13 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     3. **Principal Component Analysis**: Applies PCA to identify the two dominant directional patterns
     4. **Neighbor Finding**: For each vertex, finds nearest neighbors aligned with PC1 and PC2 directions
     5. **Line Generation**: Creates line segments connecting aligned vertices using bounding box edges
-    6. **Outlier Filtering**: Applies Hough transform-based pruning to remove inconsistent lines
-    7. **JSON Formatting**: Structures results as labeled line shapes with orientation metadata
+    6. **Hough Transform Grouping**: Groups lines by their proximity to detected Hough lines and sorts by distance
 
     The algorithm ensures that generated lines connect actual rebar intersections by:
     - Using 30-degree tolerance cones for directional alignment checking
     - Connecting bounding box edges rather than centers for more accurate line placement
-    - Applying outlier detection to remove spurious connections
-    - Using Hough transform analysis to validate line orientations against image data
+    - Applying Hough transform analysis to group lines by their dominant orientations
+    - Sorting line groups by distance to detected Hough lines (closest first)
 
     Args:
         image_path (str): Path to the input image file (supports common formats: jpg, png, etc.)
@@ -500,13 +499,13 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
                                    Higher values are more permissive. Default is 10 degrees.
 
     Returns:
-        str: JSON string containing detected line shapes in the format:
+        str: JSON string containing detected line groups in the format:
             {
                 "shapes": [
                     {
-                    "points": [[x1, y1], [x2, y2]],
-                    "orientation": "horizontal" | "vertical",
-                    "shape_type": "line"
+                        "lines": [[[x1, y1], [x2, y2]], [[x3, y3], [x4, y4]], ...],
+                        "orientation": "horizontal" | "vertical",
+                        "shape_type": "group of lines"
                     },
                     ...
                 ]
@@ -516,7 +515,8 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
         >>> json_result = get_lines('image_path.jpg', 'model.pt', threshold=15)
         >>> import json
         >>> data = json.loads(json_result)
-        >>> print(f"Found {len(data['shapes'])} line connections")
+        >>> for i, shape in enumerate(data['shapes']):
+        ...     print(f"Group {i}: {len(shape['lines'])} lines, {shape['orientation']}")
     """
     vertices = []
     shapes = []
