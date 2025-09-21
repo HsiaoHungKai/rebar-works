@@ -43,7 +43,7 @@ from rebar_object_detection import get_lines
 image_path = "path/to/image.jpg"
 model_path = "path/to/yolo_model.pt"
 
-json_lines = get_lines(image_path, model_path, threshold=1.5)
+json_lines = get_lines(image_path, model_path)
 
 # The output is a JSON string:
 # {

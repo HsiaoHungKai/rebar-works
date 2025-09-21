@@ -291,12 +291,14 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
     1. Initial statistical outlier removal using mode-based angle filtering
     2. Hough transform analysis to determine the dominant line orientations in the image
     3. Final filtering to keep only lines whose angles fall within the detected orientation range
+    4. Sorts remaining lines by their distance to detected Hough lines
 
     The process works by:
     - Drawing the initially filtered lines on a canvas
     - Applying Hough transform to detect dominant line orientations
     - Finding angle peaks that represent the most prominent line directions
     - Filtering the original line segments to keep only those aligned with detected orientations
+    - Sorting by distance to the nearest Hough line
 
     Args:
         image_path (str): Path to the input image file
@@ -336,12 +338,12 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
     # Get Hough Transform data
     hspace, angles, dists = hough_line(canvas)
     # Find peaks
-    accum, angles_peaks, dists_peaks = hough_line_peaks(
+    _, thetas, rhos = hough_line_peaks(
         hspace, angles, dists, threshold=0.5 * np.max(hspace)
     )
-
+    # Get Hough Transform angle range
     radians = []
-    for theta in angles_peaks:
+    for theta in thetas:
         radian = norm_radian(theta + np.pi / 2, pi=np.pi)
         radians.append(radian)
     diff = np.ptp(radians)
@@ -351,15 +353,23 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
                 radians[i] = norm_radian(radians[i] + np.pi, pi=np.pi)
     min_radian, max_radian = np.min(radians), np.max(radians)
 
+    # Filter lines within the angle range with some tolerance
     tolerance_degrees = 5
     tolerance_rad = tolerance_degrees * np.pi / 180
     expanded_min = min_radian - tolerance_rad
     expanded_max = max_radian + tolerance_rad
 
-    indices = []
-    for i, bounding_box in enumerate(points):
-        point1 = np.array(bounding_box[0])
-        point2 = np.array(bounding_box[1])
+    # Get Hough lines info
+    hough_line_equations = []
+    for rho, theta in zip(rhos, thetas):
+        line = convert_rho_theta_to_line_equation(rho, theta)
+        hough_line_equations.append(line)
+
+    # Perform final filtering
+    results = [[] for _ in range(len(hough_line_equations))]
+    for i, line in enumerate(points):
+        point1 = np.array(line[0])
+        point2 = np.array(line[1])
         # Calculate the angle of the line
         vector = point2 - point1
         radian = np.arctan2(vector[1], vector[0])
@@ -367,10 +377,41 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
             expanded_min <= radian <= expanded_max
             or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max
         ):
-            indices.append(i)
-    points = [points[i] for i in range(len(points)) if i in indices]
+            mid_point = (point1 + point2) / 2
+            
+            min_distance = float("inf")
+            hough_line_index = -1  # Index of the closest Hough line
+            
+            for j, hough_line_equation in enumerate(hough_line_equations):
+                A, B, C = hough_line_equation
+                distance = abs(A * mid_point[0] + B * mid_point[1] - C) / np.sqrt(
+                    A**2 + B**2
+                )
+                if distance < min_distance:
+                    min_distance = distance
+                    hough_line_index = j
+            if hough_line_index != -1:
+                results[hough_line_index].append(line)
 
-    return points
+    return results
+
+
+def convert_rho_theta_to_line_equation(rho, theta) -> tuple:
+    """
+    Converts a line defined by polar coordinates (rho, theta) to its linear equation
+    in Cartesian coordinates (Ax + By = C).
+
+    Args:
+        rho (float): The perpendicular distance from the origin to the line.
+        theta (float): The angle (in radians) of the normal vector from the origin to the line.
+
+    Returns:
+        tuple: A tuple (A, B, C) representing the line equation Ax + By = C.
+    """
+    A = np.cos(theta)
+    B = np.sin(theta)
+    C = rho
+    return A, B, C
 
 
 def add_points_to_shapes(shapes, points, pc_direction):
@@ -399,15 +440,32 @@ def add_points_to_shapes(shapes, points, pc_direction):
         - All coordinates are converted to float for JSON serialization
         - The orientation is determined by horizontal_or_vertical(pc_direction)
     """
-    for points in points:
+    # for line in points:
+    #     shapes.append(
+    #         {
+    #             "points": [
+    #                 [float(line[0][0]), float(line[0][1])],
+    #                 [float(line[1][0]), float(line[1][1])],
+    #             ],
+    #             "orientation": horizontal_or_vertical(pc_direction),
+    #             "shape_type": "line",
+    #         }
+    #     )
+    for group in points:
+        lines = []
+        for line in group:
+            lines.append(
+                [
+                    [float(line[0][0]), float(line[0][1])],
+                    [float(line[1][0]), float(line[1][1])],
+                ]
+            )
+        
         shapes.append(
             {
-                "points": [
-                    [float(points[0][0]), float(points[0][1])],
-                    [float(points[1][0]), float(points[1][1])],
-                ],
+                "lines": lines,
                 "orientation": horizontal_or_vertical(pc_direction),
-                "shape_type": "line",
+                "shape_type": "group of lines",
             }
         )
 
