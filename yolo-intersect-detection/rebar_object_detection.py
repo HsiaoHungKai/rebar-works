@@ -416,29 +416,24 @@ def convert_rho_theta_to_line_equation(rho, theta) -> tuple:
 
 def add_points_to_shapes(shapes, points, pc_direction):
     """
-    Adds line segments to the shapes list in JSON-compatible format.
+    Adds grouped line segments to the shapes list in JSON-compatible format.
 
-    This function takes a list of line segments defined by their endpoints and appends
-    them to the provided shapes list. Each line segment is represented as a dictionary
-    containing the points, orientation (horizontal or vertical), and shape type.
+    This function takes a list of Hough transform grouped line segments and appends
+    them to the provided shapes list. Each group is represented as a dictionary
+    containing the grouped lines, orientation (horizontal or vertical), and shape type.
+    The function handles the conversion from NumPy data types to JSON-serializable
+    Python types for proper JSON encoding.
 
     Args:
-        shapes (list): The list to which line dictionaries will be appended.
-        points (list): List of line segments, each as [[x1, y1], [x2, y2]].
-        pc_direction (str): Principal component direction ("left", "right", "up", or "down").
+        shapes (list): The list to which line group dictionaries will be appended.
+        points (list): List of line groups, where each group contains multiple line 
+                      segments [[x1, y1], [x2, y2]] that share similar Hough transform
+                      characteristics (proximity to the same detected Hough line).
+        pc_direction (str): Principal component direction ("left", "right", "up", or "down")
+                           used to determine the overall orientation of the line group.
 
     Returns:
-        list: The updated 'shapes' list with the new line segments added.
-
-    Example:
-        >>> shapes = []
-        >>> points = [[[0, 0], [1, 0]], [[0, 0], [0, 1]]]
-        >>> add_points_to_shapes(shapes, points, "right")
-        # shapes now contains the two lines with appropriate orientation
-
-    Note:
-        - All coordinates are converted to float for JSON serialization
-        - The orientation is determined by horizontal_or_vertical(pc_direction)
+        list: The updated 'shapes' list with the new line groups added.
     """
     # for line in points:
     #     shapes.append(
