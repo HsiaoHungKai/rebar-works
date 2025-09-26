@@ -378,13 +378,14 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
             or expanded_min <= norm_radian(radian + np.pi, np.pi) <= expanded_max
         ):
             mid_point = (point1 + point2) / 2
+            x, y = mid_point[0], mid_point[1]
             
             min_distance = float("inf")
             hough_line_index = -1  # Index of the closest Hough line
             
             for j, hough_line_equation in enumerate(hough_line_equations):
                 A, B, C = hough_line_equation
-                distance = abs(A * mid_point[0] + B * mid_point[1] - C) / np.sqrt(
+                distance = abs(A * x + B * y - C) / np.sqrt(
                     A**2 + B**2
                 )
                 if distance < min_distance:
