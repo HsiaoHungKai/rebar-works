@@ -573,13 +573,29 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
             direction = pc_direction["pc1"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc1_vertex["index"]]
-            points = get_points_from_direction(start, end, direction)
+            
+            # # Get points from the edge of bounding boxes instead of center points
+            # points = get_points_from_direction(start, end, direction)
+            
+            # Get points from center points
+            start_vertice = get_vertice_from_box(start)
+            end_vertice = get_vertice_from_box(end)
+            points = [start_vertice, end_vertice]
+            
             pc1_points.append(points)
         if pc2_vertex["index"] is not None:
             direction = pc_direction["pc2"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc2_vertex["index"]]
-            points = get_points_from_direction(start, end, direction)
+            
+            # # Get points from the edge of bounding boxes instead of center points
+            # points = get_points_from_direction(start, end, direction)
+            
+            # Get points from center points
+            start_vertice = get_vertice_from_box(start)
+            end_vertice = get_vertice_from_box(end)
+            points = [start_vertice, end_vertice]
+            
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
@@ -695,3 +711,9 @@ def horizontal_or_vertical(direction) -> str:
         return "horizontal"
     else:
         return "vertical"
+    
+
+def get_vertice_from_box(box) -> list:
+    x_center = (box[0] + box[2]) / 2
+    y_center = (box[1] + box[3]) / 2
+    return [x_center, y_center]
