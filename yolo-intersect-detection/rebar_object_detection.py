@@ -9,9 +9,6 @@ import json
 import logging
 
 
-logging.basicConfig(level=logging.INFO)
-
-
 def get_bounding_boxes(image, model_path):
     """
     Args:
@@ -385,15 +382,13 @@ def prune_lines_using_hough_transform(image_path, points, threshold):
         ):
             mid_point = (point1 + point2) / 2
             x, y = mid_point[0], mid_point[1]
-            
+
             min_distance = float("inf")
             hough_line_index = -1  # Index of the closest Hough line
-            
+
             for j, hough_line_equation in enumerate(hough_line_equations):
                 A, B, C = hough_line_equation
-                distance = abs(A * x + B * y - C) / np.sqrt(
-                    A**2 + B**2
-                )
+                distance = abs(A * x + B * y - C) / np.sqrt(A**2 + B**2)
                 if distance < min_distance:
                     min_distance = distance
                     hough_line_index = j
@@ -430,20 +425,20 @@ def prune_lines_by_length(pc_points, threshold=2.0):
         length = np.linalg.norm(point2 - point1, ord=2)
         lengths.append(length)
     lengths = np.array(lengths)
-    
+
     median = np.median(lengths)
     mad = np.median(np.abs(lengths - median))
-    
+
     # Define acceptable range
     lower_bound = median - threshold * mad
     upper_bound = median + threshold * mad
-    
+
     # Filter lines within acceptable length range
     filtered_points = []
     for i, length in enumerate(lengths):
         if lower_bound <= length <= upper_bound:
             filtered_points.append(pc_points[i])
-    
+
     return filtered_points
 
 
@@ -459,7 +454,7 @@ def add_points_to_shapes(shapes, points, pc_direction):
 
     Args:
         shapes (list): The list to which line group dictionaries will be appended.
-        points (list): List of line groups, where each group contains multiple line 
+        points (list): List of line groups, where each group contains multiple line
                       segments [[x1, y1], [x2, y2]] that share similar Hough transform
                       characteristics (proximity to the same detected Hough line).
         pc_direction (str): Principal component direction ("left", "right", "up", or "down")
@@ -488,7 +483,16 @@ def add_points_to_shapes(shapes, points, pc_direction):
                     [float(line[1][0]), float(line[1][1])],
                 ]
             )
-        
+        logging.info(f"line_pairs: {lines}")
+
+        dists = []
+        for line in group:
+            point1 = np.array(line[0])
+            point2 = np.array(line[1])
+            length = np.linalg.norm(point2 - point1, ord=2)
+            dists.append(length)
+        logging.info(f"line_dists: {dists}")
+
         shapes.append(
             {
                 "lines": lines,
@@ -605,29 +609,29 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
             direction = pc_direction["pc1"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc1_vertex["index"]]
-            
+
             # # Get points from the edge of bounding boxes instead of center points
             # points = get_points_from_direction(start, end, direction)
-            
+
             # Get points from center points
             start_vertice = get_vertice_from_box(start)
             end_vertice = get_vertice_from_box(end)
             points = [start_vertice, end_vertice]
-            
+
             pc1_points.append(points)
         if pc2_vertex["index"] is not None:
             direction = pc_direction["pc2"]
             start = bounding_boxes[i]
             end = bounding_boxes[pc2_vertex["index"]]
-            
+
             # # Get points from the edge of bounding boxes instead of center points
             # points = get_points_from_direction(start, end, direction)
-            
+
             # Get points from center points
             start_vertice = get_vertice_from_box(start)
             end_vertice = get_vertice_from_box(end)
             points = [start_vertice, end_vertice]
-            
+
             pc2_points.append(points)
 
     # Removing outliers depending on the radian of vector for pc1_points and pc2_points using get_circular_outlier_indices or get_mode_outlier_indices
@@ -643,7 +647,7 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     # pc2_points = remove_outliers(
     #     get_mode_outlier_indices, pc2_points, threshold
     # )
-    
+
     pc1_points = prune_lines_by_length(pc1_points)
     pc2_points = prune_lines_by_length(pc2_points)
 
@@ -746,7 +750,7 @@ def horizontal_or_vertical(direction) -> str:
         return "horizontal"
     else:
         return "vertical"
-    
+
 
 def get_vertice_from_box(box) -> list:
     x_center = (box[0] + box[2]) / 2
