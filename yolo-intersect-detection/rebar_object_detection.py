@@ -6,6 +6,10 @@ import cv2
 from skimage.transform import hough_line, hough_line_peaks
 from scipy.stats import circmean, circstd
 import json
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
 
 
 def get_bounding_boxes(image, model_path):
@@ -37,7 +41,9 @@ def get_bounding_boxes(image, model_path):
     filtered_boxes = xyxy[mask]
 
     if results[0].boxes is not None:
-        return filtered_boxes.cpu().numpy()
+        result = filtered_boxes.cpu().numpy()
+        logging.info(f"intersects: {result}")
+        return result
     else:
         return np.array([])
 
@@ -415,6 +421,32 @@ def convert_rho_theta_to_line_equation(rho, theta) -> tuple:
     return A, B, C
 
 
+def prune_lines_by_length(pc_points, threshold=2.0):
+    # Get all lengths
+    lengths = []
+    for point in pc_points:
+        point1 = np.array(point[0])
+        point2 = np.array(point[1])
+        length = np.linalg.norm(point2 - point1, ord=2)
+        lengths.append(length)
+    lengths = np.array(lengths)
+    
+    median = np.median(lengths)
+    mad = np.median(np.abs(lengths - median))
+    
+    # Define acceptable range
+    lower_bound = median - threshold * mad
+    upper_bound = median + threshold * mad
+    
+    # Filter lines within acceptable length range
+    filtered_points = []
+    for i, length in enumerate(lengths):
+        if lower_bound <= length <= upper_bound:
+            filtered_points.append(pc_points[i])
+    
+    return filtered_points
+
+
 def add_points_to_shapes(shapes, points, pc_direction):
     """
     Adds grouped line segments to the shapes list in JSON-compatible format.
@@ -611,6 +643,9 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     # pc2_points = remove_outliers(
     #     get_mode_outlier_indices, pc2_points, threshold
     # )
+    
+    pc1_points = prune_lines_by_length(pc1_points)
+    pc2_points = prune_lines_by_length(pc2_points)
 
     # Perform Hough Transform pruning on pc1_points and pc2_points
     pc1_points = prune_lines_using_hough_transform(
