@@ -42,7 +42,7 @@ def get_bounding_boxes(image, model_path):
         logging.info(f"intersects: {result}")
         return result
     else:
-        return np.array([])
+        raise ValueError("No bounding boxes detected in the image.")
 
 
 def rotate(vector, angle):
