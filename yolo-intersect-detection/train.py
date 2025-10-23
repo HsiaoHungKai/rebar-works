@@ -2,7 +2,8 @@ from ultralytics import YOLO
 import torch
 
 torch.cuda.set_device(0)
-model = YOLO("yolo11n.pt", device="gpu")
+model = YOLO("yolo12l.pt")
+model.to("cuda")
 
 
 search_space = {
