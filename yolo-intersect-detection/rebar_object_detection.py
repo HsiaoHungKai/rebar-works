@@ -9,6 +9,10 @@ import json
 import logging
 
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+
 def get_bounding_boxes(image, model_path):
     """
     Args:
