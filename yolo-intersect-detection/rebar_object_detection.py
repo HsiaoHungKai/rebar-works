@@ -9,15 +9,12 @@ import json
 import logging
 
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-
-
-def get_bounding_boxes(image, model_path):
+def get_bounding_boxes(image, model_path, logger=None):
     """
     Args:
         image: Input image (can be file path string, numpy array, or PIL image)
         model_path: Path to the YOLO model weights file
+        logger: Logger instance for logging detection information
 
     Returns:
         numpy.ndarray: Array of bounding boxes in xyxy format
@@ -43,7 +40,8 @@ def get_bounding_boxes(image, model_path):
 
     if results[0].boxes is not None:
         result = filtered_boxes.cpu().numpy()
-        logging.info(f"intersects: {result}")
+        if logger is not None:
+            logger.info(f"intersects: {result}")
         return result
     else:
         raise ValueError("No bounding boxes detected in the image.")
@@ -446,7 +444,7 @@ def prune_lines_by_length(pc_points, threshold=2.0):
     return filtered_points
 
 
-def add_points_to_shapes(shapes, points, pc_direction):
+def add_points_to_shapes(shapes, points, pc_direction, logger=None):
     """
     Adds grouped line segments to the shapes list in JSON-compatible format.
 
@@ -463,6 +461,7 @@ def add_points_to_shapes(shapes, points, pc_direction):
                       characteristics (proximity to the same detected Hough line).
         pc_direction (str): Principal component direction ("left", "right", "up", or "down")
                            used to determine the overall orientation of the line group.
+        logger: Logger instance for logging detection information
 
     Returns:
         list: The updated 'shapes' list with the new line groups added.
@@ -487,7 +486,6 @@ def add_points_to_shapes(shapes, points, pc_direction):
                     [float(line[1][0]), float(line[1][1])],
                 ]
             )
-        logging.info(f"line_pairs: {lines}")
 
         dists = []
         for line in group:
@@ -495,7 +493,10 @@ def add_points_to_shapes(shapes, points, pc_direction):
             point2 = np.array(line[1])
             length = np.linalg.norm(point2 - point1, ord=2)
             dists.append(length)
-        logging.info(f"line_dists: {dists}")
+        
+        if logger is not None:
+            logger.info(f"line_pairs: {lines}")
+            logger.info(f"line_dists: {dists}")
 
         shapes.append(
             {
@@ -508,7 +509,7 @@ def add_points_to_shapes(shapes, points, pc_direction):
     return shapes
 
 
-def get_lines(image_path, model_path, threshold: float = 10) -> str:
+def get_lines(image_path, model_path, logger=None, threshold: float = 10) -> str:
     """
     Detects rebar intersections and generates grouped connection lines using PCA alignment and Hough transform analysis.
 
@@ -531,6 +532,7 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     Args:
         image_path (str): Path to the input image file (supports common formats: jpg, png, etc.)
         model_path (str): Path to the trained YOLO model weights file (.pt format)
+        logger: Logger instance for logging detection information
         threshold (float, optional): Statistical threshold for mode-based outlier detection.
                                    Higher values are more permissive. Default is 10 degrees.
 
@@ -560,7 +562,7 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
     pc2_points = []
 
     # Get bounding boxes from the image using the model
-    bounding_boxes = get_bounding_boxes(image_path, model_path)
+    bounding_boxes = get_bounding_boxes(image_path, model_path, logger)
     vertices = []
     for box in bounding_boxes:
         x_center = (box[0] + box[2]) / 2
@@ -663,8 +665,8 @@ def get_lines(image_path, model_path, threshold: float = 10) -> str:
         image_path, pc2_points, threshold=threshold
     )
 
-    add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"])
-    add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"])
+    add_points_to_shapes(shapes, pc1_points, pc_direction["pc1"], logger)
+    add_points_to_shapes(shapes, pc2_points, pc_direction["pc2"], logger)
 
     return json.dumps({"shapes": shapes}, indent=2)
 
