@@ -7,6 +7,7 @@ from skimage.transform import hough_line, hough_line_peaks
 from scipy.stats import circmean, circstd
 import json
 import logging
+import yaml
 
 
 def get_bounding_boxes(image, model_path, logger=None):
@@ -560,6 +561,8 @@ def get_lines(image_path, model_path, logger=None, threshold: float = 10) -> str
     shapes = []
     pc1_points = []
     pc2_points = []
+    
+    config = load_config()
 
     # Get bounding boxes from the image using the model
     bounding_boxes = get_bounding_boxes(image_path, model_path, logger)
@@ -654,8 +657,9 @@ def get_lines(image_path, model_path, logger=None, threshold: float = 10) -> str
     #     get_mode_outlier_indices, pc2_points, threshold
     # )
 
-    pc1_points = prune_lines_by_length(pc1_points)
-    pc2_points = prune_lines_by_length(pc2_points)
+    if config["features"]["prune_by_length"]:
+        pc1_points = prune_lines_by_length(pc1_points)
+        pc2_points = prune_lines_by_length(pc2_points)
 
     # Perform Hough Transform pruning on pc1_points and pc2_points
     pc1_points = prune_lines_using_hough_transform(
@@ -762,3 +766,9 @@ def get_vertice_from_box(box) -> list:
     x_center = (box[0] + box[2]) / 2
     y_center = (box[1] + box[3]) / 2
     return [x_center, y_center]
+
+
+def load_config(path="config.yaml"):
+    with open(path, "r") as f:
+        config = yaml.safe_load(f)
+    return config
