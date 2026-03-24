@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import numpy as np
+from PIL import Image
 
 
 MODEL_ID = "facebook/sam3"

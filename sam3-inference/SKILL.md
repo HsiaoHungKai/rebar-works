@@ -34,6 +34,63 @@ Use this folder as the source of truth for single-image SAM3 inference on TWCC.
   - `1` means positive
   - `0` means negative
 
+## Inference Examples
+
+Use these commands when the task is to infer a single image.
+
+Local text-prompt inference:
+
+```bash
+cd /Users/hungkaihsiao/Documents/rebar-works/sam3-inference
+python3 -m pip install -r requirements.txt
+python3 infer.py \
+  --input-image ./input.jpg \
+  --prompt-type text \
+  --text "dog" \
+  --output-dir ./outputs/text-run \
+  --device auto
+```
+
+Local point-prompt inference:
+
+```bash
+cd /Users/hungkaihsiao/Documents/rebar-works/sam3-inference
+python3 infer.py \
+  --input-image ./input.jpg \
+  --prompt-type points \
+  --points "90,120,1;150,40,0" \
+  --output-dir ./outputs/point-run \
+  --device auto \
+  --multimask
+```
+
+TWCC text-prompt inference:
+
+```bash
+cd /Users/hungkaihsiao/Documents/rebar-works/sam3-inference
+./run_twcc_inference.sh \
+  --input-image ./input.jpg \
+  --prompt-type text \
+  --text "dog"
+```
+
+TWCC point-prompt inference:
+
+```bash
+cd /Users/hungkaihsiao/Documents/rebar-works/sam3-inference
+./run_twcc_inference.sh \
+  --input-image ./input.jpg \
+  --prompt-type points \
+  --points "90,120,1;150,40,0" \
+  --multimask
+```
+
+Expect these outputs for both prompt types:
+
+- `mask.png`
+- `overlay.png`
+- `result.json`
+
 ## TWCC Notes
 
 - Verify `twccli` availability and active project context before mutating TWCC resources.

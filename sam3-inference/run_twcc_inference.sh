@@ -27,6 +27,7 @@ MULTIMASK="0"
 
 CREATED_SITE_ID=""
 RUN_ID="sam3-$(date +%Y%m%d-%H%M%S)"
+DEFAULT_SITE_NAME="sam3$(date +%m%d%H%M%S)"
 REMOTE_OUTPUT_DIR=""
 
 log() {
@@ -36,6 +37,11 @@ log() {
 die() {
   printf '[sam3-twcc] ERROR: %s\n' "$*" >&2
   exit 1
+}
+
+validate_site_name() {
+  local name="$1"
+  [[ "$name" =~ ^[a-z][a-z0-9_-]{5,15}$ ]] || die "Invalid --site-name '$name'. TWCC CCS names must match ^[a-z][a-z0-9_-]{5,15}$."
 }
 
 usage() {
@@ -185,8 +191,9 @@ twccli info proj >/dev/null
 twccli info quota >/dev/null
 
 if [[ -z "$SITE_NAME" ]]; then
-  SITE_NAME="$RUN_ID"
+  SITE_NAME="$DEFAULT_SITE_NAME"
 fi
+validate_site_name "$SITE_NAME"
 
 if [[ -z "$LOCAL_OUTPUT_DIR" ]]; then
   LOCAL_OUTPUT_DIR="$SCRIPT_DIR/outputs/$RUN_ID"
@@ -225,12 +232,21 @@ PY
 
 create_site() {
   local create_json
+  local create_stderr
   local -a cmd
-  cmd=(twccli mk ccs --name "$SITE_NAME" --gpu-number "$GPU_NUMBER" --image-type-name "$IMAGE_TYPE_NAME" --image-name "$IMAGE_NAME" --command "bash -lc 'trap : TERM INT; sleep infinity & wait'" --wait-ready --json)
+  create_stderr="$(mktemp)"
+  cmd=(twccli mk ccs --name "$SITE_NAME" --gpu-number "$GPU_NUMBER" --image-type-name "$IMAGE_TYPE_NAME" --image-name "$IMAGE_NAME" --command "bash -lc 'trap : TERM INT; sleep infinity & wait'" --wait-ready -json)
   if [[ -n "$PRODUCT_TYPE" ]]; then
     cmd+=(--product-type "$PRODUCT_TYPE")
   fi
-  create_json="$("${cmd[@]}")"
+  if ! create_json="$("${cmd[@]}" 2>"$create_stderr")"; then
+    local create_error
+    create_error="$(cat "$create_stderr")"
+    rm -f "$create_stderr"
+    die "Failed to create CCS site '$SITE_NAME'. ${create_error:-No error output from twccli.}"
+  fi
+  rm -f "$create_stderr"
+  [[ -n "$create_json" ]] || die "TWCC create command returned empty output for site '$SITE_NAME'."
   CREATED_SITE_ID="$(python3 -c '
 import json
 import sys
@@ -251,6 +267,7 @@ wait_for_ssh_target() {
   local site_id="$1"
   local attempt
   local target
+  [[ -n "$site_id" ]] || die "Cannot resolve SSH info because the CCS site id is empty."
   for attempt in $(seq 1 30); do
     if target="$(twccli ls ccs --site-id "$site_id" --get-ssh-info 2>/dev/null)"; then
       target="$(printf '%s' "$target" | tr -d '\r' | awk 'NF {print $0; exit}')"
@@ -301,6 +318,7 @@ else
   fi
   log "Creating CCS site $SITE_NAME with image $IMAGE_NAME."
   SITE_ID="$(create_site)"
+  [[ -n "$SITE_ID" ]] || die "CCS creation did not return a site id."
   log "Created CCS site $SITE_ID."
 fi
 
