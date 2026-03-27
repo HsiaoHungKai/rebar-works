@@ -257,61 +257,44 @@ execution_mode() {
     
     [[ -n "$SITE_ID" ]] || fail "Failed to extract SITE_ID from container creation output"
     
-    # Get SSH connection info using the SITE_ID
+    # Get SSH connection info using the SITE_ID with -gssh flag
+    log "Retrieving SSH connection details using -gssh..."
     set -x
     TEMP_INFO=$(mktemp)
-    # Try without -gssh flag first as it may be buggy
-    twccli ls ccs -s "$SITE_ID" -table > "$TEMP_INFO" 2>&1 || true
+    twccli ls ccs -s "$SITE_ID" -gssh > "$TEMP_INFO" 2>&1 || true
     cat "$TEMP_INFO"
     set +x
     
-    # Try to get network/connection info
-    log "Attempting to retrieve SSH connection details..."
-    set -x
-    TEMP_NET=$(mktemp)
-    twccli net ccs -s "$SITE_ID" 2>&1 | tee "$TEMP_NET" || true
-    set +x
+    # Parse IP and PORT from -gssh output
+    # Expected format: ssh user@IP_ADDRESS -p PORT or similar
+    log "Parsing SSH connection details from -gssh output..."
     
-    # Parse IP and PORT from the output
-    # For CCS containers, we need to look at the connection info differently
-    # The format is typically: user@IP -p PORT
+    # Extract IP address from user@IP format
     if grep -q "@" "$TEMP_INFO"; then
-        # Extract from connection string format: user@IP
         IP_ADDRESS=$(grep "@" "$TEMP_INFO" | grep -v "User" | head -n 1 | sed -E 's/.*@([0-9\.\-]+).*/\1/')
-        # Extract port if shown
-        if grep -q "\-p" "$TEMP_INFO"; then
-            PORT=$(grep "\-p" "$TEMP_INFO" | sed -E 's/.*-p[[:space:]]*([0-9]+).*/\1/')
-        else
-            PORT="22"  # Default SSH port
-        fi
+        log "Extracted IP from user@host format: $IP_ADDRESS"
     else
-        # Try parsing from table columns
-        # Look for lines with the container name and extract connection details
-        CONNECTION_LINE=$(grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" "$TEMP_INFO" | head -n 1)
-        if [[ -n "$CONNECTION_LINE" ]]; then
-            IP_ADDRESS=$(echo "$CONNECTION_LINE" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | head -n 1)
-            # Look for port number (usually 4 or 5 digits)
-            PORT=$(echo "$CONNECTION_LINE" | grep -oE "[0-9]{4,5}" | tail -n 1)
-            [[ -z "$PORT" ]] && PORT="22"
+        # Fallback: extract any IP address from output
+        IP_ADDRESS=$(grep -oE "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" "$TEMP_INFO" | grep -v "^0\." | head -n 1)
+        log "Extracted IP from general pattern: $IP_ADDRESS"
+    fi
+    
+    # Extract port from -p PORT format
+    if grep -q "\-p" "$TEMP_INFO"; then
+        PORT=$(grep "\-p" "$TEMP_INFO" | sed -E 's/.*-p[[:space:]]*([0-9]+).*/\1/')
+        log "Extracted PORT from -p flag: $PORT"
+    else
+        # Fallback: look for any port number pattern
+        PORT=$(grep -oE "port[[:space:]]*:?[[:space:]]*[0-9]{2,5}" "$TEMP_INFO" -i | grep -oE "[0-9]{2,5}" | head -n 1)
+        if [[ -z "$PORT" ]]; then
+            PORT="22"  # Default SSH port
+            log "No port found, using default: $PORT"
+        else
+            log "Extracted PORT from pattern: $PORT"
         fi
     fi
     
-    # If still not found, try listing with specific site
-    if [[ -z "$IP_ADDRESS" || -z "$PORT" ]]; then
-        log "Trying alternative method to get connection info..."
-        set -x
-        twccli ls ccs -s "$SITE_ID" > "$TEMP_INFO" 2>&1 || true
-        set +x
-        cat "$TEMP_INFO"
-        
-        # Parse any IP address from output
-        IP_ADDRESS=$(grep -oE "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" "$TEMP_INFO" | grep -v "^0\." | head -n 1)
-        # Parse any port number
-        PORT=$(grep -oE "port[[:space:]]*:?[[:space:]]*[0-9]{2,5}" "$TEMP_INFO" -i | grep -oE "[0-9]{2,5}" | head -n 1)
-        [[ -z "$PORT" ]] && PORT="22"
-    fi
-    
-    rm -f "$TEMP_CREATE" "$TEMP_INFO" "$TEMP_SSH"
+    rm -f "$TEMP_CREATE" "$TEMP_INFO"
     
     set +x
     log "Container Info:"
