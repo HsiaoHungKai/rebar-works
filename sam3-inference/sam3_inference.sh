@@ -386,7 +386,7 @@ set -euo pipefail
 cd /tmp/sam3
 
 # Install required packages
-pip install torch transformers Pillow requests
+pip install torch torchvision transformers Pillow requests
 
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
@@ -423,6 +423,42 @@ REMOTE_EOF
     log "==================================================================="
     log "Inference completed!"
     log "==================================================================="
+    
+    # Step 7: Download results file
+    log "==================================================================="
+    log "Step 7: Downloading results from container"
+    log "==================================================================="
+    set -x
+
+    # Download sam3_results.json from remote container
+    if command -v sshpass >/dev/null 2>&1; then
+        sshpass -p "$TWCC_PASSWORD" scp \
+            -i "$PEM_LOCATION" \
+            -P "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
+            ./sam3_results.json
+    else
+        set +x
+        log "Please enter password when prompted to download results: ${TWCC_PASSWORD}"
+        set -x
+        scp \
+            -i "$PEM_LOCATION" \
+            -P "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
+            ./sam3_results.json
+    fi
+    
+    set +x
+    if [[ -f sam3_results.json ]]; then
+        log "Results successfully downloaded to: $(pwd)/sam3_results.json"
+    else
+        log "WARNING: Failed to download results file"
+    fi
+    
     log "Container will be cleaned up automatically..."
     
     # Cleanup will be handled by trap
