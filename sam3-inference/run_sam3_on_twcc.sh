@@ -346,6 +346,32 @@ execution_mode() {
         -o UserKnownHostsFile=/dev/null \
         sam3_inference.py requirements.txt "u7740467@${IP_ADDRESS}:/tmp/sam3/"
     
+    # Upload images directory if it exists
+    if [ -d "./images" ]; then
+        log "Uploading images directory to container..."
+        
+        # Create /tmp/sam3/images directory on remote container
+        sshpass -p "$TWCC_PASSWORD" ssh \
+            -i "$PEM_LOCATION" \
+            -p "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}" \
+            "mkdir -p /tmp/sam3/images"
+        
+        # Upload all files from ./images to /tmp/sam3/images
+        sshpass -p "$TWCC_PASSWORD" scp \
+            -i "$PEM_LOCATION" \
+            -P "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -r ./images/* "u7740467@${IP_ADDRESS}:/tmp/sam3/images/"
+        
+        log "Images uploaded successfully"
+    else
+        log "Warning: ./images directory not found, skipping image upload"
+    fi
+    
     # Step 6: SSH into container and run setup + inference
     set +x
     log "==================================================================="
