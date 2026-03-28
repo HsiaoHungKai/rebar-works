@@ -2,4 +2,5 @@ torch
 torchvision
 transformers
 Pillow
+pillow-heif
 requests

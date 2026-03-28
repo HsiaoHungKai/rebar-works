@@ -13,6 +13,10 @@ import time
 from pathlib import Path
 from datetime import datetime
 
+# Enable HEIC/HEIF support for iPhone photos
+from pillow_heif import register_heif_opener
+register_heif_opener()
+
 
 class SAM3Inference:
     """
@@ -326,10 +330,12 @@ def batch_infer_directory(
     
     for img_path in image_files:
         try:
+            # Open and convert to RGB (supports JPEG, PNG, HEIC, HEIF, WebP, etc.)
             img = Image.open(img_path).convert("RGB")
             loaded_images.append(img)
             valid_image_paths.append(img_path)
-            print(f"✓ Loaded: {img_path.name}")
+            print(f"✓ Loaded: {img_path.name} ({img.size[0]}x{img.size[1]})")
+            
         except Exception as e:
             print(f"✗ Failed to load {img_path.name}: {e}")
     
