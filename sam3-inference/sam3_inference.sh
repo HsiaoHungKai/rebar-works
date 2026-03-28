@@ -337,13 +337,14 @@ execution_mode() {
         "mkdir -p /tmp/sam3"
     log "Directory /tmp/sam3 created successfully"
     
-    # Upload Python script using sshpass
+    # Upload Python script and requirements.txt using sshpass
+    log "Uploading sam3_inference.py and requirements.txt..."
     sshpass -p "$TWCC_PASSWORD" scp \
         -i "$PEM_LOCATION" \
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
+        sam3_inference.py requirements.txt "u7740467@${IP_ADDRESS}:/tmp/sam3/"
     
     # Step 6: SSH into container and run setup + inference
     set +x
@@ -360,8 +361,8 @@ set -euo pipefail
 # Change to the working directory where sam3_inference.py was uploaded
 cd /tmp/sam3
 
-# Install required packages
-pip install torch torchvision transformers Pillow requests
+# Install required packages from requirements.txt
+pip install -r requirements.txt
 
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
