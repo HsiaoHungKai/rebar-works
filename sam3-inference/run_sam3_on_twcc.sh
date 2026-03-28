@@ -392,7 +392,7 @@ pip install -r requirements.txt
 
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
-python sam3_inference.py
+python sam3_inference.py --image-dir /tmp/sam3/images --prompt "rebar" --output-dir ./results
 REMOTE_EOF
 )
     
@@ -426,7 +426,7 @@ REMOTE_EOF
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
-        ./sam3_results.json
+        ./results
     
     set +x
     if [[ -f sam3_results.json ]]; then
