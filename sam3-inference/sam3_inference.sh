@@ -328,47 +328,22 @@ execution_mode() {
     
     # Create /tmp/sam3 directory on remote container
     log "Creating /tmp/sam3 directory on container..."
-    if command -v sshpass >/dev/null 2>&1; then
-        sshpass -p "$TWCC_PASSWORD" ssh \
-            -i "$PEM_LOCATION" \
-            -p "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
-            "mkdir -p /tmp/sam3"
-    else
-        set +x
-        log "Please enter password when prompted to create directory: ${TWCC_PASSWORD}"
-        set -x
-        ssh \
-            -i "$PEM_LOCATION" \
-            -p "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
-            "mkdir -p /tmp/sam3"
-    fi
+    sshpass -p "$TWCC_PASSWORD" ssh \
+        -i "$PEM_LOCATION" \
+        -p "$PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "u7740467@${IP_ADDRESS}" \
+        "mkdir -p /tmp/sam3"
     log "Directory /tmp/sam3 created successfully"
     
-    # Use sshpass if available, otherwise prompt for password
-    if command -v sshpass >/dev/null 2>&1; then
-        sshpass -p "$TWCC_PASSWORD" scp \
-            -i "$PEM_LOCATION" \
-            -P "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
-    else
-        set +x
-        log "Please enter password when prompted: ${TWCC_PASSWORD}"
-        set -x
-        scp \
-            -i "$PEM_LOCATION" \
-            -P "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
-    fi
+    # Upload Python script using sshpass
+    sshpass -p "$TWCC_PASSWORD" scp \
+        -i "$PEM_LOCATION" \
+        -P "$PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
     
     # Step 6: SSH into container and run setup + inference
     set +x
@@ -398,26 +373,13 @@ REMOTE_EOF
     REMOTE_SCRIPT="${REMOTE_SCRIPT//__HF_TOKEN_PLACEHOLDER__/$HF_TOKEN}"
     
     # Execute remote script
-    if command -v sshpass >/dev/null 2>&1; then
-        sshpass -p "$TWCC_PASSWORD" ssh \
-            -i "$PEM_LOCATION" \
-            -p "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
-            "$REMOTE_SCRIPT"
-    else
-        set +x
-        log "Please enter password when prompted: ${TWCC_PASSWORD}"
-        set -x
-        ssh \
-            -i "$PEM_LOCATION" \
-            -p "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
-            "$REMOTE_SCRIPT"
-    fi
+    sshpass -p "$TWCC_PASSWORD" ssh \
+        -i "$PEM_LOCATION" \
+        -p "$PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "u7740467@${IP_ADDRESS}" \
+        "$REMOTE_SCRIPT"
     
     set +x
     log "==================================================================="
@@ -431,26 +393,13 @@ REMOTE_EOF
     set -x
 
     # Download sam3_results.json from remote container
-    if command -v sshpass >/dev/null 2>&1; then
-        sshpass -p "$TWCC_PASSWORD" scp \
-            -i "$PEM_LOCATION" \
-            -P "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
-            ./sam3_results.json
-    else
-        set +x
-        log "Please enter password when prompted to download results: ${TWCC_PASSWORD}"
-        set -x
-        scp \
-            -i "$PEM_LOCATION" \
-            -P "$PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
-            ./sam3_results.json
-    fi
+    sshpass -p "$TWCC_PASSWORD" scp \
+        -i "$PEM_LOCATION" \
+        -P "$PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
+        ./sam3_results.json
     
     set +x
     if [[ -f sam3_results.json ]]; then
