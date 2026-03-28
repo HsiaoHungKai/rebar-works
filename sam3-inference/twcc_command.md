@@ -15,9 +15,8 @@ twccli mk ccs \
   -wait \
   -table
 
-# 3. List the container info to get your <SITE_ID>, IP, and <PORT>
-twccli ls ccs -gssh -table
-# (If needed, you can query a specific site: twccli ls ccs -s <SITE_ID> -gssh -table)
+# 3. List the container info to get your IP, and <PORT>
+twccli ls ccs -s <SITE_ID> -gssh -table
 
 # 4. Ensure your SSH key has the correct permissions (you likely only need to do this once)
 chmod 400 <PEM_LOCATION>
@@ -32,7 +31,7 @@ scp -i <PEM_LOCATION> -P <PORT> sam3_inference.py u7740467@<IP_ADDRESS>:~/
 
 # 2. SSH into the container
 ssh -p <PORT> u7740467@<IP_ADDRESS>
-```
+``` 
 
 ### 3. Remote Environment Setup
 Run these inside the TWCC container (Ubuntu):

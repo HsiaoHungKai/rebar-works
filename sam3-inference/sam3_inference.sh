@@ -271,7 +271,7 @@ execution_mode() {
     
     # Extract IP address from user@IP format
     if grep -q "@" "$TEMP_INFO"; then
-        IP_ADDRESS=$(grep "@" "$TEMP_INFO" | grep -v "User" | head -n 1 | sed -E 's/.*@([0-9\.\-]+).*/\1/')
+        IP_ADDRESS=$(grep "@" "$TEMP_INFO" | grep -v "User" | head -n 1 | sed -E 's/.*@([^ ]+).*/\1/')
         log "Extracted IP from user@host format: $IP_ADDRESS"
     else
         # Fallback: extract any IP address from output
@@ -326,6 +326,30 @@ execution_mode() {
     # Wait a bit for container to be fully ready
     sleep 10
     
+    # Create /tmp/sam3 directory on remote container
+    log "Creating /tmp/sam3 directory on container..."
+    if command -v sshpass >/dev/null 2>&1; then
+        sshpass -p "$TWCC_PASSWORD" ssh \
+            -i "$PEM_LOCATION" \
+            -p "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}" \
+            "mkdir -p /tmp/sam3"
+    else
+        set +x
+        log "Please enter password when prompted to create directory: ${TWCC_PASSWORD}"
+        set -x
+        ssh \
+            -i "$PEM_LOCATION" \
+            -p "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}" \
+            "mkdir -p /tmp/sam3"
+    fi
+    log "Directory /tmp/sam3 created successfully"
+    
     # Use sshpass if available, otherwise prompt for password
     if command -v sshpass >/dev/null 2>&1; then
         sshpass -p "$TWCC_PASSWORD" scp \
@@ -333,7 +357,7 @@ execution_mode() {
             -P "$PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            sam3_inference.py "u7740467@${IP_ADDRESS}:~/"
+            sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
     else
         set +x
         log "Please enter password when prompted: ${TWCC_PASSWORD}"
@@ -343,7 +367,7 @@ execution_mode() {
             -P "$PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            sam3_inference.py "u7740467@${IP_ADDRESS}:~/"
+            sam3_inference.py "u7740467@${IP_ADDRESS}:/tmp/sam3/"
     fi
     
     # Step 6: SSH into container and run setup + inference
@@ -358,16 +382,11 @@ execution_mode() {
 set -x
 set -euo pipefail
 
-# Download and install Miniconda
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-bash miniconda.sh -b -p $HOME/miniconda3
-
-# Initialize Conda
-$HOME/miniconda3/bin/conda init bash
-source ~/.bashrc
+# Change to the working directory where sam3_inference.py was uploaded
+cd /tmp/sam3
 
 # Install required packages
-pip install transformers Pillow requests
+pip install torch transformers Pillow requests
 
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
