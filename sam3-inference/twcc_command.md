@@ -3,7 +3,7 @@ Run these on your local Mac:
 
 ```bash
 # 1. Go to your working directory and activate your local conda environment
-cd /Users/hungkaihsiao/Documents/rebar-works/sam3-inference
+cd <CURRENT_DIR>
 conda activate rebar-works
 
 # 2. Create the TWCC container
