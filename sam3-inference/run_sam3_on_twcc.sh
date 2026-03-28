@@ -173,6 +173,20 @@ execution_mode() {
     
     trap cleanup EXIT ERR
     
+    # =========================================================================
+    # Configuration for SAM3 Inference
+    # =========================================================================
+    # These can be overridden via environment variables
+    SAM3_IMAGE_DIR="${SAM3_IMAGE_DIR:-/tmp/sam3/images}"
+    SAM3_PROMPT="${SAM3_PROMPT:-rebar}"
+    SAM3_OUTPUT_DIR="${SAM3_OUTPUT_DIR:-/tmp/sam3/results}"
+    
+    log "SAM3 Inference Configuration:"
+    log "  Image Directory: ${SAM3_IMAGE_DIR}"
+    log "  Prompt: '${SAM3_PROMPT}'"
+    log "  Output Directory: ${SAM3_OUTPUT_DIR}"
+    log ""
+    
     # Step 1: Go to working directory and activate conda environment
     set +x
     log "==================================================================="
@@ -392,12 +406,18 @@ pip install -r requirements.txt
 
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
-python sam3_inference.py --image-dir /tmp/sam3/images --prompt "rebar" --output-dir ./results
+python sam3_inference.py \
+    --image-dir __IMAGE_DIR_PLACEHOLDER__ \
+    --prompt "__PROMPT_PLACEHOLDER__" \
+    --output-dir __OUTPUT_DIR_PLACEHOLDER__ 
 REMOTE_EOF
 )
     
-    # Replace placeholder with actual token
+    # Replace placeholders with actual values
     REMOTE_SCRIPT="${REMOTE_SCRIPT//__HF_TOKEN_PLACEHOLDER__/$HF_TOKEN}"
+    REMOTE_SCRIPT="${REMOTE_SCRIPT//__IMAGE_DIR_PLACEHOLDER__/$SAM3_IMAGE_DIR}"
+    REMOTE_SCRIPT="${REMOTE_SCRIPT//__PROMPT_PLACEHOLDER__/$SAM3_PROMPT}"
+    REMOTE_SCRIPT="${REMOTE_SCRIPT//__OUTPUT_DIR_PLACEHOLDER__/$SAM3_OUTPUT_DIR}"
     
     # Execute remote script
     sshpass -p "$TWCC_PASSWORD" ssh \
