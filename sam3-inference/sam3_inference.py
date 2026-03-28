@@ -219,7 +219,7 @@ def sanitize_prompt(prompt: str) -> str:
 
 def get_image_files(directory: str) -> List[Path]:
     """Get all image files from directory."""
-    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.heic'}
     image_dir = Path(directory)
     
     if not image_dir.exists():

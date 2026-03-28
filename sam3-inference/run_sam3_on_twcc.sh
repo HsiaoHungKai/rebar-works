@@ -381,7 +381,20 @@ execution_mode() {
             -o UserKnownHostsFile=/dev/null \
             -r ./images/* "u7740467@${IP_ADDRESS}:/tmp/sam3/images/"
         
-        log "Images uploaded successfully"
+        # Validate files were uploaded to remote server
+        FILE_COUNT=$(sshpass -p "$TWCC_PASSWORD" ssh \
+            -i "$PEM_LOCATION" \
+            -p "$PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "u7740467@${IP_ADDRESS}" \
+            "ls /tmp/sam3/images 2>/dev/null | wc -l")
+        
+        if [ "$FILE_COUNT" -gt 0 ]; then
+            log "Images uploaded successfully ($FILE_COUNT files in /tmp/sam3/images)"
+        else
+            log "Warning: Upload completed but no files found in /tmp/sam3/images on remote server"
+        fi
     else
         log "Warning: ./images directory not found, skipping image upload"
     fi
