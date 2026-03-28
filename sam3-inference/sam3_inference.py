@@ -2,6 +2,8 @@ from transformers import Sam3Processor, Sam3Model
 import torch
 from PIL import Image
 import requests
+import json
+import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -27,7 +29,36 @@ results = processor.post_process_instance_segmentation(
 )[0]
 
 print(f"Found {len(results['masks'])} objects")
-# Results contain:
-# - masks: Binary masks resized to original image size
-# - boxes: Bounding boxes in absolute pixel coordinates (xyxy format)
-# - scores: Confidence scores
+
+# Prepare results for JSON output
+output_data = {
+    "num_objects": len(results['masks']),
+    "device_used": device,
+    "image_url": image_url,
+    "text_prompt": "ear",
+    "objects": []
+}
+
+# Add each detected object
+for i in range(len(results['masks'])):
+    obj = {
+        "object_id": i,
+        "score": float(results['scores'][i]),
+        "bounding_box": {
+            "x1": float(results['boxes'][i][0]),
+            "y1": float(results['boxes'][i][1]),
+            "x2": float(results['boxes'][i][2]),
+            "y2": float(results['boxes'][i][3])
+        },
+        "mask_shape": list(results['masks'][i].shape)
+    }
+    output_data["objects"].append(obj)
+
+# Save results to JSON file
+output_file = "sam3_results.json"
+with open(output_file, 'w') as f:
+    json.dump(output_data, f, indent=2)
+
+print(f"Results saved to {output_file}")
+print(f"Summary: {output_data['num_objects']} objects detected with scores: {[obj['score'] for obj in output_data['objects']]}")
+
