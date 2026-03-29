@@ -35,6 +35,33 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
+# Retry sshpass commands with exponential backoff
+retry_sshpass_cmd() {
+    local max_attempts=5
+    local delay=2
+    local attempt=1
+    local cmd=("$@")
+    
+    while [ $attempt -le $max_attempts ]; do
+        log "Attempt $attempt/$max_attempts: ${cmd[*]}"
+        
+        if "${cmd[@]}"; then
+            log "Command succeeded on attempt $attempt"
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            log "Command failed, retrying in ${delay}s..."
+            sleep $delay
+        else
+            log "Command failed after $max_attempts attempts"
+            return 1
+        fi
+        
+        ((attempt++))
+    done
+}
+
 ###############################################################################
 # ORCHESTRATOR MODE - Runs first, spawns terminal
 ###############################################################################
@@ -342,7 +369,7 @@ execution_mode() {
     
     # Create /tmp/sam3 directory on remote container
     log "Creating /tmp/sam3 directory on container..."
-    sshpass -p "$TWCC_PASSWORD" ssh \
+    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" ssh \
         -i "$PEM_LOCATION" \
         -p "$PORT" \
         -o StrictHostKeyChecking=no \
@@ -353,7 +380,7 @@ execution_mode() {
     
     # Upload Python script and requirements.txt using sshpass
     log "Uploading sam3_inference.py and requirements.txt..."
-    sshpass -p "$TWCC_PASSWORD" scp \
+    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp \
         -i "$PEM_LOCATION" \
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
@@ -365,7 +392,7 @@ execution_mode() {
         log "Uploading images directory to container..."
         
         # Create /tmp/sam3/images directory on remote container
-        sshpass -p "$TWCC_PASSWORD" ssh \
+        retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" ssh \
             -i "$PEM_LOCATION" \
             -p "$PORT" \
             -o StrictHostKeyChecking=no \
@@ -374,7 +401,7 @@ execution_mode() {
             "mkdir -p /tmp/sam3/images"
         
         # Upload all files from ./images to /tmp/sam3/images
-        sshpass -p "$TWCC_PASSWORD" scp \
+        retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp \
             -i "$PEM_LOCATION" \
             -P "$PORT" \
             -o StrictHostKeyChecking=no \
@@ -382,7 +409,7 @@ execution_mode() {
             -r ./images/* "u7740467@${IP_ADDRESS}:/tmp/sam3/images/"
         
         # Validate files were uploaded to remote server
-        FILE_COUNT=$(sshpass -p "$TWCC_PASSWORD" ssh \
+        FILE_COUNT=$(retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" ssh \
             -i "$PEM_LOCATION" \
             -p "$PORT" \
             -o StrictHostKeyChecking=no \
@@ -433,7 +460,7 @@ REMOTE_EOF
     REMOTE_SCRIPT="${REMOTE_SCRIPT//__OUTPUT_DIR_PLACEHOLDER__/$SAM3_OUTPUT_DIR}"
     
     # Execute remote script
-    sshpass -p "$TWCC_PASSWORD" ssh \
+    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" ssh \
         -i "$PEM_LOCATION" \
         -p "$PORT" \
         -o StrictHostKeyChecking=no \
@@ -453,12 +480,12 @@ REMOTE_EOF
     set -x
 
     # Download sam3_results.json from remote container
-    sshpass -p "$TWCC_PASSWORD" scp \
+    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp \
         -i "$PEM_LOCATION" \
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "u7740467@${IP_ADDRESS}:/tmp/sam3/sam3_results.json" \
+        "u7740467@${IP_ADDRESS}:/tmp/sam3/results" \
         ./results
     
     set +x
