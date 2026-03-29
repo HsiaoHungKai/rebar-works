@@ -38,7 +38,7 @@ require_command() {
 # Retry sshpass commands with exponential backoff
 retry_sshpass_cmd() {
     local max_attempts=5
-    local delay=2
+    local delays=(1 2 4 8)  # Exponential backoff delays in seconds
     local attempt=1
     local cmd=("$@")
     
@@ -51,6 +51,7 @@ retry_sshpass_cmd() {
         fi
         
         if [ $attempt -lt $max_attempts ]; then
+            local delay=${delays[$((attempt - 1))]}
             log "Command failed, retrying in ${delay}s..."
             sleep $delay
         else
@@ -479,8 +480,8 @@ REMOTE_EOF
     log "==================================================================="
     set -x
 
-    # Download sam3_results.json from remote container
-    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp \
+    # Download the files in /tmp/sam3/results from remote container
+    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp -r \
         -i "$PEM_LOCATION" \
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
