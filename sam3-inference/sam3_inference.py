@@ -282,14 +282,14 @@ def save_result(
         'metadata': {
             'image_filename': image_path.name,
             'image_path': str(image_path),
-            'npz_filename': npz_filename,
             'text_prompt': prompt,
             'model_id': model_id,
             'threshold': threshold,
             'mask_threshold': mask_threshold,
             'timestamp': datetime.now().isoformat(),
             'processing_time_seconds': round(processing_time, 3),
-            'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0
+            'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0,
+            'npz_filename': npz_filename,
         },
     }
     
