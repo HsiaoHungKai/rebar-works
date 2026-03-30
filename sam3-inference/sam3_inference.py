@@ -282,6 +282,7 @@ def save_result(
         'metadata': {
             'image_filename': image_path.name,
             'image_path': str(image_path),
+            'npz_filename': npz_filename,
             'text_prompt': prompt,
             'model_id': model_id,
             'threshold': threshold,
@@ -290,7 +291,6 @@ def save_result(
             'processing_time_seconds': round(processing_time, 3),
             'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0
         },
-        'npz_file': npz_filename
     }
     
     with open(output_path, 'w') as f:
