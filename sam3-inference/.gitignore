@@ -1,4 +1,21 @@
-outputs
-twcc-artifacts
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
-images
+# Environment variables
+.env
+
+# Input and output
+results/
+images/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS files
+.DS_Store
+
+# IDE
+.vscode/
+.codex/

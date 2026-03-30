@@ -486,14 +486,15 @@ REMOTE_EOF
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "u7740467@${IP_ADDRESS}:/tmp/sam3/results" \
-        ./results
+        "u7740467@${IP_ADDRESS}:/tmp/sam3/results/*" \
+        ./results/
     
     set +x
-    if [[ -f sam3_results.json ]]; then
-        log "Results successfully downloaded to: $(pwd)/sam3_results.json"
+    if [[ -d ./results ]] && [[ -n "$(ls -A ./results 2>/dev/null)" ]]; then
+        log "Results successfully downloaded to: $(pwd)/results/"
+        log "Files downloaded: $(ls -1 ./results | wc -l | tr -d ' ')"
     else
-        log "WARNING: Failed to download results file"
+        log "WARNING: Failed to download results files"
     fi
     
     log "Container will be cleaned up automatically..."
