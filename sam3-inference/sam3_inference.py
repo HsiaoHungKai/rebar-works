@@ -96,9 +96,8 @@ class SAM3Inference:
         text_prompts: Union[str, List[str]],
         batch_size: int = 4,
         threshold: float = 0.5,
-        mask_threshold: float = 0.5,
-        return_numpy: bool = True
-    ) -> List[dict]:
+        mask_threshold: float = 0.5
+    ) -> List[List[np.ndarray]]:
         """
         Run inference on images with text prompts.
 
@@ -108,10 +107,12 @@ class SAM3Inference:
             batch_size: Number of images to process per batch
             threshold: Confidence threshold for instance detection
             mask_threshold: Threshold for mask binarization
-            return_numpy: Return masks as numpy arrays instead of tensors
 
         Returns:
-            List of dicts containing 'masks', 'scores', 'labels' for each image
+            List of lists, where each inner list contains [masks, boxes, scores] as numpy arrays:
+            - masks: Binary masks resized to original image size
+            - boxes: Bounding boxes in absolute pixel coordinates (xyxy format)
+            - scores: Confidence scores
         """
         # Normalize inputs
         pil_images = self._normalize_images(images)
@@ -158,16 +159,19 @@ class SAM3Inference:
                 target_sizes=inputs.get("original_sizes").tolist()
             )
 
-            # Convert to numpy if requested
-            if return_numpy:
-                batch_results = [
-                    {
-                        'masks': r['masks'].cpu().numpy() if 'masks' in r else None,
-                        'scores': r['scores'].cpu().numpy() if 'scores' in r else None,
-                        'labels': r['labels'].cpu().numpy() if 'labels' in r else None
-                    }
-                    for r in batch_results
+            print("masks")
+            print("shape", batch_results[0]['masks'].shape)
+            print(batch_results[0]['masks'])
+
+            # Convert to list format [masks, boxes, scores]
+            batch_results = [
+                [
+                    r['masks'].cpu().numpy().astype(np.uint8) if 'masks' in r else np.array([]),
+                    r['boxes'].cpu().numpy() if 'boxes' in r else np.array([]),
+                    r['scores'].cpu().numpy() if 'scores' in r else np.array([])
                 ]
+                for r in batch_results
+            ]
 
             all_results.extend(batch_results)
 
@@ -178,22 +182,20 @@ class SAM3Inference:
         image: Union[np.ndarray, Image.Image],
         text_prompt: str,
         threshold: float = 0.5,
-        mask_threshold: float = 0.5,
-        return_numpy: bool = True
-    ) -> dict:
+        mask_threshold: float = 0.5
+    ) -> List[np.ndarray]:
         """
         Convenience method for single image inference.
 
         Returns:
-            Dict containing 'masks', 'scores', 'labels'
+            List containing [masks, boxes, scores] as numpy arrays
         """
         results = self.infer(
             images=[image],
             text_prompts=[text_prompt],
             batch_size=1,
             threshold=threshold,
-            mask_threshold=mask_threshold,
-            return_numpy=return_numpy
+            mask_threshold=mask_threshold
         )
         return results[0]
 
@@ -241,7 +243,7 @@ def get_image_files(directory: str) -> List[Path]:
 
 
 def save_result(
-    result: dict,
+    result: List[np.ndarray],
     image_path: Path,
     prompt: str,
     output_dir: Path,
@@ -250,12 +252,33 @@ def save_result(
     mask_threshold: float,
     processing_time: float
 ) -> Path:
-    """Save inference result to JSON file with metadata."""
+    """
+    Save inference result to JSON file with metadata.
+    
+    Args:
+        result: List containing [masks, boxes, scores] as numpy arrays
+    """
     prompt_slug = sanitize_prompt(prompt)
     output_filename = f"{image_path.stem}_{prompt_slug}.json"
     output_path = output_dir / output_filename
     
     # Convert numpy arrays to lists for JSON serialization
+    def convert_to_serializable(obj):
+        """Convert numpy arrays to lists recursively."""
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (list, tuple)):
+            return [convert_to_serializable(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: convert_to_serializable(value) for key, value in obj.items()}
+        else:
+            return obj
+    
+    # Unpack result list: [masks, boxes, scores]
+    masks = result[0] if len(result) > 0 else np.array([])
+    boxes = result[1] if len(result) > 1 else np.array([])
+    scores = result[2] if len(result) > 2 else np.array([])
+    
     serializable_result = {
         'metadata': {
             'image_filename': image_path.name,
@@ -266,13 +289,12 @@ def save_result(
             'mask_threshold': mask_threshold,
             'timestamp': datetime.now().isoformat(),
             'processing_time_seconds': round(processing_time, 3),
-            'num_objects_detected': len(result.get('scores', []))
+            'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0
         },
         'results': {
-            'masks': [mask.tolist() if isinstance(mask, np.ndarray) else mask 
-                     for mask in result.get('masks', [])] if result.get('masks') is not None else [],
-            'scores': result['scores'].tolist() if isinstance(result.get('scores'), np.ndarray) else result.get('scores', []),
-            'labels': result['labels'].tolist() if isinstance(result.get('labels'), np.ndarray) else result.get('labels', [])
+            'masks': convert_to_serializable(masks),
+            'boxes': convert_to_serializable(boxes),
+            'scores': convert_to_serializable(scores)
         }
     }
     
@@ -291,12 +313,13 @@ def batch_infer_directory(
     threshold: float,
     mask_threshold: float,
     model_id: str
-) -> Tuple[List[Path], List[Image.Image], List[dict]]:
+) -> Tuple[List[Path], List[Image.Image], List[List[np.ndarray]]]:
     """
     Process all images in a directory with a text prompt.
     
     Returns:
         Tuple of (image_paths, loaded_images, results)
+        where results is a list of lists containing [masks, boxes, scores] for each image
     """
     print(f"\n{'='*60}")
     print(f"Starting batch inference")
@@ -355,8 +378,7 @@ def batch_infer_directory(
             text_prompts=prompt,
             batch_size=batch_size,
             threshold=threshold,
-            mask_threshold=mask_threshold,
-            return_numpy=True
+            mask_threshold=mask_threshold
         )
     except Exception as e:
         print(f"\nError during inference: {e}")
@@ -381,7 +403,8 @@ def batch_infer_directory(
                 mask_threshold=mask_threshold,
                 processing_time=per_image_time
             )
-            num_objects = len(result.get('scores', []))
+            # result is now a list [masks, boxes, scores]
+            num_objects = len(result[2]) if len(result) > 2 and isinstance(result[2], np.ndarray) else 0
             print(f"✓ Saved: {output_file.name} ({num_objects} objects detected)")
             saved_count += 1
         except Exception as e:
@@ -458,8 +481,7 @@ def interactive_mode(
                     text_prompts=user_input,
                     batch_size=batch_size,
                     threshold=threshold,
-                    mask_threshold=mask_threshold,
-                    return_numpy=True
+                    mask_threshold=mask_threshold
                 )
                 
                 total_time = time.time() - start_time
@@ -482,7 +504,8 @@ def interactive_mode(
                             mask_threshold=mask_threshold,
                             processing_time=per_image_time
                         )
-                        num_objects = len(result.get('scores', []))
+                        # result is now a list [masks, boxes, scores]
+                        num_objects = len(result[2]) if len(result) > 2 and isinstance(result[2], np.ndarray) else 0
                         total_objects += num_objects
                         print(f"✓ {img_path.name}: {num_objects} objects")
                         saved_count += 1
@@ -611,18 +634,19 @@ Examples:
             model_id=args.model_id
         )
         
-        # Enter interactive mode if batch processing succeeded and not disabled
-        if loaded_images and not args.no_interactive:
-            interactive_mode(
-                inference_engine=inference_engine,
-                image_paths=image_paths,
-                loaded_images=loaded_images,
-                output_dir=args.output_dir,
-                batch_size=args.batch_size,
-                threshold=args.threshold,
-                mask_threshold=args.mask_threshold,
-                model_id=args.model_id
-            )
+        # # We will develop interactive mode in the next step, so we will comment it out for now. The batch inference will still run and save results, but the interactive loop will be disabled until we implement it.
+        # # Enter interactive mode if batch processing succeeded and not disabled
+        # if loaded_images and not args.no_interactive:
+        #     interactive_mode(
+        #         inference_engine=inference_engine,
+        #         image_paths=image_paths,
+        #         loaded_images=loaded_images,
+        #         output_dir=args.output_dir,
+        #         batch_size=args.batch_size,
+        #         threshold=args.threshold,
+        #         mask_threshold=args.mask_threshold,
+        #         model_id=args.model_id
+        #     )
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")
