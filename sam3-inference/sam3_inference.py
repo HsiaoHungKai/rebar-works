@@ -253,33 +253,32 @@ def save_result(
     processing_time: float
 ) -> Path:
     """
-    Save inference result to JSON file with metadata.
+    Save inference result to JSON (metadata) and NPZ (numpy arrays) files.
     
     Args:
         result: List containing [masks, boxes, scores] as numpy arrays
+        
+    Returns:
+        Path to the JSON file (metadata with reference to NPZ file)
     """
     prompt_slug = sanitize_prompt(prompt)
     output_filename = f"{image_path.stem}_{prompt_slug}.json"
     output_path = output_dir / output_filename
     
-    # Convert numpy arrays to lists for JSON serialization
-    def convert_to_serializable(obj):
-        """Convert numpy arrays to lists recursively."""
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, (list, tuple)):
-            return [convert_to_serializable(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: convert_to_serializable(value) for key, value in obj.items()}
-        else:
-            return obj
+    # Generate NPZ filename (same stem, different extension)
+    npz_filename = f"{image_path.stem}_{prompt_slug}.npz"
+    npz_path = output_dir / npz_filename
     
     # Unpack result list: [masks, boxes, scores]
     masks = result[0] if len(result) > 0 else np.array([])
     boxes = result[1] if len(result) > 1 else np.array([])
     scores = result[2] if len(result) > 2 else np.array([])
     
-    serializable_result = {
+    # Save numpy arrays to compressed NPZ file
+    np.savez_compressed(npz_path, masks=masks, boxes=boxes, scores=scores)
+    
+    # Save metadata to JSON with reference to NPZ file
+    json_data = {
         'metadata': {
             'image_filename': image_path.name,
             'image_path': str(image_path),
@@ -291,15 +290,11 @@ def save_result(
             'processing_time_seconds': round(processing_time, 3),
             'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0
         },
-        'results': {
-            'masks': convert_to_serializable(masks),
-            'boxes': convert_to_serializable(boxes),
-            'scores': convert_to_serializable(scores)
-        }
+        'npz_file': npz_filename
     }
     
     with open(output_path, 'w') as f:
-        json.dump(serializable_result, f, indent=2)
+        json.dump(json_data, f, indent=2)
     
     return output_path
 
