@@ -159,10 +159,6 @@ class SAM3Inference:
                 target_sizes=inputs.get("original_sizes").tolist()
             )
 
-            print("masks")
-            print("shape", batch_results[0]['masks'].shape)
-            print(batch_results[0]['masks'])
-
             # Convert to list format [masks, boxes, scores]
             batch_results = [
                 [
@@ -290,7 +286,7 @@ def save_result(
             'processing_time_seconds': round(processing_time, 3),
             'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0,
             'npz_filename': npz_filename,
-        },
+        }
     }
     
     with open(output_path, 'w') as f:

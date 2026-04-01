@@ -1,4 +1,0 @@
-interface:
-  display_name: "TWCC CLI Repo"
-  short_description: "Use TWCC CLI from repository-local workflows"
-  default_prompt: "Use $twcc-cli-repo to inspect or manage TWCC resources from this repository."
