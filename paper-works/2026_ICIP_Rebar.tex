@@ -1,0 +1,738 @@
+% Template for ICIP-2022 paper; to be used with:
+%          spconf.sty  - ICASSP/ICIP LaTeX style file, and
+%          IEEEbib.bst - IEEE bibliography style file.
+% --------------------------------------------------------------------------
+\documentclass{article}
+\usepackage{spconf,amsmath,graphicx}
+\usepackage{xcolor}
+%[monochrome]
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage[super]{nth}
+\usepackage{soul}
+% \usepackage{subfigure}
+\usepackage{subcaption}
+\usepackage{amsfonts}
+\usepackage{romannum}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{comment}
+\usepackage{stfloats}
+\usepackage[normalem]{ulem}
+\usepackage[pagebackref=false,breaklinks=true,colorlinks,bookmarks=false,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\let\OLDthebibliography\thebibliography
+\renewcommand\thebibliography[1]{
+  \OLDthebibliography{#1}
+  \setlength{\parskip}{0pt}
+  \setlength{\itemsep}{0pt plus 0ex}
+}
+\usepackage{enumitem}
+\usepackage{threeparttable}
+\usepackage{makecell}
+
+
+% Example definitions.
+% --------------------
+\def\x{{\mathbf x}}
+\def\L{{\cal L}}
+
+% Title.
+% ------
+\title{A Mixture of Measurement Strategies Framework for Monocular Mobile Rebar Spacing Inspection}
+
+%-------double blind-------------
+\newif\ifblind
+\blindtrue 
+%\blindfalse
+
+
+\ifblind
+    \name{Anonymous Authors}
+
+    \address{}
+\else
+    \name{
+    Cheng-En Li \qquad
+    Jue-Yu Lai \qquad
+    Hung-Kai Hsiao \qquad
+    Chang-Yuan Hsiao \qquad
+    Peggy Joy Lu$^{\star}$%
+    \thanks{This work was supported by the National Science and Technology Council (NSTC), Taiwan, under Grant 114-2221-E-194-030-MY3, and by the National Center for High-performance Computing (NCHC), Taiwan, for providing computational resources.}
+    }
+
+    \address{
+    Department of Computer Science and Information Engineering,\\
+    National Chung Cheng University, Chiayi, Taiwan
+    }
+\fi
+%
+%
+% For example:
+% ------------
+%\address{School\\
+%	Department\\
+%	Address}
+%
+% Two addresses (uncomment and modify for two-address case).
+% ----------------------------------------------------------
+%\twoauthors
+%  {A. Author-one, B. Author-two\sthanks{Thanks to XYZ agency for funding.}}
+%	{School A-B\\
+%	Department A-B\\
+%	Address A-B}
+%  {C. Author-three, D. Author-four\sthanks{The fourth author performed the work
+%	while at ...}}
+%	{School C-D\\
+%	Department C-D\\
+%	Address C-D}
+%
+\begin{document}
+
+\topmargin=0mm
+%\ninept
+%
+\maketitle
+%
+
+\begin{abstract}
+%\vspace{-0.6em}
+%Reliable rebar spacing inspection is essential for construction quality assurance but remains challenging under varying viewpoints and complex geometric conditions. Existing approaches typically rely on a fixed measurement strategy, which degrades when sensing reliability varies across scenarios. This paper proposes a rebar spacing inspection framework based on a Mixture of Measurement Strategies (MoMS), which formulates spacing estimation as a reliability-aware decision process. Given a single monocular image captured by a mobile device, rebar topology is recovered via intersection-based line extraction with checkerboard-based scale calibration, while monocular depth estimation serves as an auxiliary cue when reliable. A Reliability-Aware Measurement Strategy (RAMS) dynamically selects between planar and depth-guided formulations. Experiments across diverse viewpoints and construction environments demonstrate robust performance, and system optimization enables efficient deployment in cloud-based mobile applications.
+
+Reliable rebar spacing inspection is essential for construction quality assurance but remains challenging under varying viewpoints and complex geometric conditions. Existing approaches typically rely on a fixed measurement strategy, which becomes unreliable when sensing conditions vary across scenarios. This paper proposes a Mixture of Measurement Strategies (MoMS) framework that treats rebar spacing estimation as a reliability-aware selection problem. Given a single monocular image captured by a mobile device, the framework reconstructs rebar topology and estimates metric scale using lightweight geometric cues, while monocular depth estimation is exploited only when reliable. A Reliability-Aware Measurement Strategy (RAMS) adaptively selects between planar and depth-guided formulations. Experiments across diverse viewpoints and construction environments demonstrate robust performance, and system optimization enables efficient deployment in cloud-based mobile applications.
+
+
+
+\end{abstract}
+%
+\begin{keywords}
+Rebar spacing inspection, Monocular mobile vision, Measurement strategy selection, Reliability-aware inspection, Construction quality assurance
+\end{keywords}
+%
+%\vspace{-1em}
+
+\section{Introduction}
+\label{sec:intro}
+%The structural integrity of reinforced concrete infrastructure depends critically on the precision of rebar placement. However, with the expanding scale of modern construction projects, the sheer volume of rebars renders traditional compliance verification via manual measurement increasingly inefficient, failing to meet tight construction schedules. 
+
+Deviations from the designed rebar layouts in hydraulic concrete structures can significantly compromise crack control capability and long-term durability, leading to premature structural degradation and increased maintenance risks. Therefore, a reliable inspection of the rebar spacing is essential during construction. However, as construction projects scale in size and complexity, manual compliance verification has become increasingly inefficient and inconsistent, highly susceptible to fatigue, unfavorable viewing angles, and subjective judgment. Furthermore, adverse site conditions such as poor illumination, dense rebar stacking, and limited accessibility in large-scale infrastructures further increase occupational safety risks during manual inspection. Although automated non-destructive testing (NDT) methods, including Ground Penetrating Radar (GPR) \cite{Rebar_Cancellation_for_GPR, GPR_YOLO}, magnetic-based localization \cite{SVR-Based_Rebar}, and electromagnetic induction (EMI) \cite{EMI}, have been explored, they are primarily suited for post-pour inspection, where detected errors would otherwise require costly rework or structural remediation. For pre-pour inspection, active depth sensing technologies such as LiDAR have also been explored \cite{LiDAR_2023, sparse_to_dense}. However, these sensing-based systems are typically cost-prohibitive, bulky, and reliant on linear scanning with limited area coverage, while their outputs typically require complex post-processing or expert interpretation. As these limitations hinder practical deployment in real-world scenarios, we seek a lightweight alternative that enables rebar inspection from a single image captured using a commodity mobile devices.
+
+
+% Although automated non-destructive testing (NDT) methods have been widely explored to address these issues, they share common limitations. Existing research predominantly focuses on Ground Penetrating Radar (GPR), ranging from traditional signal processing for reflection extraction \cite{Rebar_Cancellation_for_GPR} to recent deep learning-enhanced approaches for clutter suppression \cite{GPR_YOLO}. Additionally, localization methods based on magnetic effects \cite{SVR-Based_Rebar} and electromagnetic induction (EMI) \cite{EMI} have been proposed. However, these techniques are predominantly \textit{post-pour} methods, failing to provide preventative feedback during the \textit{pre-pour} construction phase. Once spacing errors are identified after pouring, rectification often requires costly structural reinforcement or demolition. Moreover, GPR systems are typically cost-prohibitive, bulky, and rely on linear scanning technology, which suffers from low inspection efficiency for large-scale areas. The interpretation of radargrams and sensor data also necessitates complex post-processing algorithms or regression models \cite{Rebar_Cancellation_for_GPR, SVR-Based_Rebar, EMI}, limiting their deployability by frontline workers.
+
+
+%\color{cyan} Rebar spacing errors do not arise from a single failure mode, but from heterogeneous geometric conditions, including perspective distortion, depth ambiguity, partial occlusion, and layered structures, which cannot be robustly handled by a single sensing modality. We argue that rebar spacing inspection should not be treated as a single measurement task, but as a decision-aware inspection process, where the measurement strategy itself must adapt to sensing reliability. \color{black}
+
+
+Recent computer vision approaches for rebar inspection using mobile devices have been explored for pre-pour inspection, including 2D image-based detection \cite{2D_DL} \cite{BFMF-Net} and 3D point-cloud-based methods \cite{Hybrid_Perception}. However, 2D detection-based approaches lack topological connectivity, while 3D point-cloud methods incur high computational cost, limiting their applicability in real-time deployment. Although monocular depth estimation models such as MiDaS \cite{midas}, Depth Anything \cite{depth_anything}, and Depth Pro \cite{depth_pro} have shown improved generalization, their direct application to precise metric rebar measurement remains challenging. This is because such models are typically trained on generic scene datasets with limited or no exposure to rebar-dense construction imagery, which can lead to unstable or degraded depth predictions and, consequently, inaccurate spacing estimation \cite{mde_review_DL}.
+These observations indicate that rebar spacing errors arise from diverse geometric conditions, including perspective distortion, depth ambiguity, occlusion, and multilayered structures, which cannot be robustly addressed by a single general approach. We therefore treat rebar inspection as a reliability-aware process that dynamically adapts measurement strategies based on sensing conditions.
+
+
+
+
+%To address these limitations, computer vision using mobile devices has emerged as a promising pre-pour alternative. Recent studies have demonstrated the efficacy of image-based deep learning models for rapid rebar detection \cite{2D_DL}. More advanced approaches, such as the RGB-D based BFMF-Net \cite{BFMF-Net}, attempt to handle cluttered backgrounds through multiscale feature fusion, while point-cloud methods utilize diffusion models for multi-node perception \cite{Hybrid_Perception}. However, these methods often face significant trade-offs: object detection frameworks typically provide only bounding box localization without the essential topological connectivity \cite{BFMF-Net}, while point-cloud diffusion models incur high computational costs that limit real-time feasibility \cite{Hybrid_Perception}.
+
+%Furthermore, relying on a single modality presents distinct technical challenges. Monocular RGB vision lacks depth information, making it susceptible to errors caused by perspective distortion. Conversely, active depth sensors (e.g., LiDAR, structured light) are often cost-prohibitive and generate sparse data requiring extensive post-processing \cite{LiDAR_2023, sparse_to_dense}. While recent Monocular Depth Estimation (MDE) foundation models like MiDaS \cite{midas} and Depth Anything \cite{depth_anything} have demonstrated impressive zero-shot generalization, and Depth Pro \cite{depth_pro} has begun addressing scale ambiguity, applying these tools directly to metric rebar measurement remains challenging due to edge blurring and domain-specific accuracy demands \cite{mde_review_DL}.
+
+% Therefore, this study proposes an adaptive multi-modal inspection system that integrates planar semantic features with spatial depth information. The system workflow proceeds as follows: First, checkerboard detection is performed to establish a precise metric scale, while our proposed deep learning-based node detection module concurrently extracts key rebar intersections. Next, the detected nodes are converted into line segments to reconstruct the topological structure, addressing the connectivity limitations of previous detectors. Subsequently, an adaptive multi-modal judgment mechanism selects the optimal Planar or Depth-Guided strategy based on depth consistency to execute the final spacing measurement. This approach ensures robust precision in complex construction scenarios.
+
+
+
+In this paper, we propose Mixture of Measurement Strategies (MoMS), a practical framework for rebar spacing inspection using single monocular images from mobile device. The Reliability-Aware Measurement Strategy (RAMS) transforms rebar inspection as a decision-aware process, adaptively selecting the optimal measurement approach based on sensing reliability across diverse viewpoints and geometric conditions. To support practical deployment, the framework features an optimized pipeline comprising scale reference detection, intersection localization, and rebar line extraction, enabling real-time inference. The system is deployed as a cloud-based service with standardized APIs, facilitating integration with mobile devices and on-site construction applications. In summary, the main contributions of this paper are as follows:
+\begin{itemize}[leftmargin=*, itemsep=0pt, topsep=0pt]
+
+    % \item We propose MoMS, a rebar spacing inspection framework for practical compliance verification from a single monocular mobile image captured by commodity devices.
+    % \item We introduce RAMS, which formulates inspection as a reliability-aware decision problem to adaptively handle varying sensing conditions and geometric challenges.
+    % \item We present a systematic evaluation across diverse viewpoints and environments, showing that adaptive strategy selection is essential for robust, field-ready performance in real-world construction scenarios.
+
+    \item We propose MoMS, an end-to-end rebar spacing inspection framework that reconstructs rebar topology and metric scale from a single monocular mobile image using lightweight geometric cues.
+    \item We introduce RAMS, a reliability-aware measurement strategy that adaptively selects between planar and depth-guided formulations under varying sensing conditions.
+    \item We conduct systematic evaluations across diverse viewpoints and environments, demonstrating that adaptive strategy selection is critical for achieving robust performance in real-world construction scenarios.
+\end{itemize}
+
+
+
+
+
+
+
+\begin{figure*}[ht]
+\centering
+\includegraphics[width=1.0\linewidth]{pic/rebar_architecture.png}
+\caption{Overview of the proposed Mixture of Measurement Strategies (MoMS) framework for rebar spacing inspection.}
+\label{fig:architecture}
+\end{figure*}
+
+%\section{Related Work}
+%\label{sec:relatedwork}
+
+%\noindent 
+%\textbf{Multi-source domain adaptation (MSDA).}
+
+\begin{comment}
+    
+\section{Related Work}
+\vspace{-0.8em}
+\label{sec:related_work}
+\subsection{Checkerboard}
+Camera calibration commonly relies on planar checkerboard methods, whose accuracy depends on robust checkerboard corner detection. Traditional methods design corner response functions using local gray-level structure, such as circular boundary sampling with DFT and dual-radius checks~\cite{huang2018_circular_sampler}, combined with gradient-based sub-pixel refinement, but they degrade under strong noise, blur, or distortion. Recent CNN-based approaches (e.g., CCDN-style detectors~\cite{chen2021_automatic_checkerboard}) directly predict X-corner response maps and, with improved losses and geometric checks, achieve better robustness and support pattern recovery under partial occlusion. Hybrid deep + handcrafted frameworks for multi-view systems~\cite{kang2021_checkerboard} further use networks to filter invalid images and classical sub-pixel refinement for the remaining corners, improving the speed--accuracy trade-off. Motivated by these advances and remaining challenges in complex scenes, we develop a checkerboard detection and corner localization method tailored to rebar environments.
+
+\subsection{Intersection detection}
+\vspace{-0.8em}
+Research on rebar intersection detection primarily covers three perspectives: grid-based, bimodal image-based, and point-cloud-based approaches. Regarding structured patterns, methods utilizing Radon-transform line fitting have been employed to achieve single-shot structured-light 3D reconstruction~\cite{Single-Shot-3D}. However, such geometric methods rely heavily on ideal grid features and often struggle to maintain stability when facing noise and irregular occlusions typical of real construction sites. Addressing complex multilayer rebar scenes, a YOLO-style RGB-D detector (BFMF-Net) was proposed, which improves detection performance in cluttered backgrounds through multiscale feature fusion~\cite{BFMF-Net}. Nevertheless, such object detection frameworks only provide bounding box localization for nodes, lacking the essential line connectivity and topological information required for structural modeling. Furthermore, in the point-cloud domain, a hybrid perception pipeline combining PCA clustering and an equivariant diffusion model has been introduced to enhance the reliability of multi-node perception~\cite{Hybrid_Perception}. However, the high computational cost associated with diffusion models limits their feasibility for real-time applications. To address these limitations, this study proposes an approach tailored to dense rebar scenes, capable of simultaneously achieving precise node detection and line segment construction.
+
+\subsection{Depth map}
+
+Active depth estimation methods usually utilize sensors like LiDAR, structured light, and Radar. However, deploying high-precision hardware is often cost-prohibitive. To achieve low-cost and real-time performance, these systems typically generate sparse point clouds. Consequently, extensive post-processing is required to reconstruct high-resolution depth maps from these sparse measurements\cite{LiDAR_2023,sparse_to_dense,mde_review_DL}.
+
+Early monocular depth estimation works primarily leveraged deep learning to address the tasks. However, in order to improve accuracy, these methods often increased model complexity, causing a surge in computational cost and memory usage. Consequently, such heavy models cannot meet the real-time requirements of practical applications. Furthermore, monocular depth estimation networks usually utilize an encoder-decoder architecture. After multiple layers of information processing, the depth features are severely lost, particularly during the downsampling stages. This degradation leads to low-accuracy estimated depth maps with blurred edges, which ultimately fails to satisfy the stringent demands of real-world scenarios.\cite{mde_review_DL}
+
+MiDaS\cite{midas}mixed multiple datasets to learn scale-invariant representations, demonstrating a certain level of zero-shot ability for relative depth estimation. Building on this, Depth Anything\cite{depth_anything}further scaled up the training paradigm on massive datasets of labeled and unlabeled images. This data-centric approach resulted in superior generalization capabilities, establishing it as a robust foundation model. Most recently, Depth Pro\cite{depth_pro}achieves zero-shot metric depth estimation without requiring metadata such as camera intrinsics. By generating high-resolution, sharp metric depth maps directly from single images, it effectively resolves the long-standing scale ambiguity problem.
+
+\end{comment}
+\vspace{-0.3cm}
+
+
+\section{Proposed Approaches}
+\label{sec:method}
+\vspace{-0.3cm}
+
+\subsection{Architecture}
+\label{sub:architecture}
+
+
+Fig.~\ref{fig:architecture} presents an overview of the proposed rebar spacing measurement framework. Given a single input image, the system extracts rebar structural cues through intersection detection and line grouping (Sec.~\ref{sub:intersection_detection}), while metric scale and depth information are obtained via checkerboard-based scale estimation and monocular depth estimation (Sec.~\ref{sub:checkerboard}, Sec.~\ref{sub:depth}). Based on the reliability cues derived, the system adaptively selects either planar or depth-guided spacing estimation (Sec.~\ref{sub:spacing_measure}, Sec.~\ref{sub:adaptive_modality_selection}). The final measurement results are delivered through a cloud-based API for mobile inspection applications.
+
+
+\vspace{-0.3cm}
+
+\subsection{Intersection-Based Rebar Structure Extraction}
+\label{sub:intersection_detection}
+
+To provide stable geometric reference points for rebar spacing estimation, rebar intersections are first localized under challenging real-world construction conditions. Based on these intersections, a grid-consistent line structure is recovered as the geometric foundation for subsequent measurement.\\
+\noindent \textbf{Intersection Location.} We formulate the identification of the intersection of rebars as an object detection task utilizing YOLO12 \cite{tian2025yolov12}, which is retrained on construction-specific rebar datasets to improve robustness under real-world conditions. From the predicted bounding boxes $B=\{b_1, \dots, b_n\}$, we extract geometric centroids $V=\{v_1, v_2, \dots, v_n\}$, where $v_i \in \mathbb{R}^2$ denotes the image-plane coordinates of an intersection.\\
+\noindent \textbf{Global Grid Orientation Estimation.}
+To account for viewpoint variations introduced by mobile image capture, we infer the dominant lattice structure by applying principal component analysis (PCA) to the centered coordinate set $V$. The resulting principal eigenvectors, $\lambda_1$ and $\lambda_2$, define the axes of the rebar grid, enabling the classification of connections into two primary orientations.\\
+\noindent \textbf{Topology-Constrained Line Construction.}
+To quantify spacing between adjacent rebars, valid topological connections between intersection vertices are identified. Given the set of intersection points $V$, candidate neighbors $v_j$ for each vertex $v_i$ are evaluated using the displacement vector $d_{ij} = v_j - v_i$. A connection is considered valid if the direction of $d_{ij}$ is aligned with one of the principal grid directions $(\lambda_1, \lambda_2)$ within an angular tolerance $\theta$. An angular tolerance of $\theta = 30^\circ$ is used in all experiments. This constraint enforces grid-consistent connectivity while suppressing irregular or spurious links caused by detection noise or local structural ambiguities.\\
+\noindent \textbf{Statistical Refinement.}
+To suppress spurious connections caused by detection noise and local ambiguities, a two-stage refinement is applied to the constructed line segments, yielding a refined set of grid-consistent segments denoted as $\mathcal{E}$. Circular statistics are first employed to remove segments whose orientations deviate significantly from the dominant direction. Subsequently, a Hough Transform \cite{galamhos1999progressive} is applied to the remaining segments to aggregate fragmented responses and reinforce globally consistent linear structures. The resulting line structures provide reliable geometric cues for subsequent spacing measurement and reliability assessment.
+
+
+
+
+% \noindent \textbf{Statistical Refinement.} We employ circular statistics to prune spurious connections. Outliers are identified when their angular deviation from the circular mean exceeds a threshold defined by the circular standard deviation. Finally, a Hough Transform is applied to the global set of line segments to enforce structural consistency, isolating dominant linear alignments in the parameter space.
+
+
+\vspace{-0.3cm}
+
+% \subsection{Depth Reliability Estimation}
+% \label{sub:checker&depth}
+\subsection{Metric Scale Estimation via Checkerboard}
+\label{sub:checkerboard}
+\begin{comment}
+    
+To ensure reliable metric accuracy in practical inspection scenarios, a physical scale reference is required. Consequently, we estimate the metric scale using a reference checkerboard with known physical dimensions. To this end, a lightweight coarse-to-fine detection strategy is adopted to balance computational efficiency and geometric precision.
+
+At the coarse stage, the input image is downsampled and enhanced to facilitate robust grid detection under varying illumination and background conditions, yielding candidate regions of interest. These regions are subsequently refined at full resolution through corner localization with sub-pixel accuracy. Based on the refined checkerboard corners, the metric scale is computed as the ratio between the average pixel distance of adjacent grid points and the known physical grid size,
+\[
+S = \frac{\bar{l}_{\text{px}}}{L_{\text{ref}}},
+\]
+where $\bar{l}_{\text{px}}$ denotes the average pixel distance between adjacent checkerboard corners and $L_{\text{ref}}$ is the physical side length of a single checkerboard cell. This scale factor provides a stable pixel-to-metric conversion for subsequent spacing measurement.
+
+\subsection{Metric Scale Estimation via Checkerboard}
+\label{sub:checkerboard}
+
+\end{comment}
+Since rebar spacing cannot be inferred from appearance alone, an explicit scale reference is required for metric inspection. We estimate the metric scale using a reference checkerboard with known physical dimensions, employing a lightweight coarse-to-fine detection strategy based on a Pyramid-ROI formulation. At the coarse stage, the input image is downsampled and enhanced to enable robust grid detection under varying illumination and background conditions, producing candidate regions of interest. These regions are then refined at full resolution through sub-pixel corner localization.
+
+
+Based on the refined checkerboard corners, the pixel-to-metric scale factor $s$ is computed as $s = \bar{l}_{\text{px}} / L_{\text{ref}}$, where $\bar{l}_{\text{px}}$ denotes the average pixel distance between adjacent checkerboard corners and $L_{\text{ref}}$ is the physical side length of a checkerboard cell. This scale factor provides a stable pixel-to-metric conversion for subsequent spacing measurement.
+
+% \noindent \textbf{Coarse-level Proposal.}
+% To accelerate the initial search, the high-resolution input image is downsampled to a lower resolution $I_{\text{low}}$. We enhance local contrast using an unsharp masking technique to highlight grid structures:
+% $$ I'_{\text{low}} = (1 + \alpha) I_{\text{low}} - \alpha \cdot \operatorname{MedianBlur}(I_{\text{low}}) $$
+% where $\alpha$ is the sharpening intensity factor, and $\operatorname{MedianBlur}(\cdot)$ denotes a non-linear median filtering operation applied to smooth the image for detail extraction. We iteratively probe the enhanced image $I'_{\text{low}}$ for various grid configurations (e.g., $6\times6$, $5\times5$). Valid detections are treated as Region of Interest (ROI) proposals.
+
+% \noindent \textbf{Fine-level Refinement.}
+% Each proposed ROI is mapped back to the original high-resolution image with a spatial margin to ensure boundary inclusion. Within these regions, we perform corner detection followed by sub-pixel refinement. The mean edge length $\bar{l}_{\text{px}}$ is computed across all structurally adjacent corner pairs to minimize quantization error:
+% $$ \bar{l}_{\text{px}} = \frac{1}{|E|} \sum_{(i,j) \in E} \| p_i - p_j \|_2 $$
+% where $p_i$ and $p_j$ denote the sub-pixel coordinates of two adjacent corners, $E$ represents the set of all structurally connected corner pairs in the grid, and $|E|$ denotes the total number (cardinality) of these pairs.
+
+% \noindent \textbf{Filtering and Scale Calculation.}
+% We employ Non-Maximum Suppression (NMS) to eliminate redundant detections. Overlapping candidates (based on IoU) are filtered by prioritizing grids with higher structural completeness (more corners) and higher resolution (larger edge lengths). Finally, the spatial resolution scale $S$ is derived as:
+% $$ S = \frac{\bar{l}_{\text{px}}}{L_{\text{ref}}} \quad (\text{pixels/cm}) $$
+% where $L_{\text{ref}}$ denotes the known physical side length of a single square on the reference checkerboard.
+
+\vspace{-0.3cm}
+
+\subsection{Monocular Depth Estimation}
+\label{sub:depth}
+
+Monocular depth estimation is employed as an auxiliary geometric cue when reliable planar scale estimates are inapplicable. We adopt the recent Depth Pro model~\cite{depth_pro} to predict a metric depth map $D$ from a single input image. To reduce the impact of extreme or unstable depth predictions, the estimated depth is converted to inverse depth and clipped to a physically plausible range. The resulting depth representation is normalized and used for reliability-aware modality selection rather than direct metric measurement. This design avoids over-reliance on monocular depth while still exploiting its geometric cues when appropriate.
+
+
+
+\begin{comment}
+
+We employ the state-of-the-art monocular depth estimation model, Depth Pro \cite{depth_pro}, to predict a metric depth map $D$ from the input image. To facilitate intuitive visualization, we convert the metric depth to inverse depth $D_{inv} = 1/D$. Following the official Depth Pro implementation configuration, we clip the inverse depth values to the range $[\delta_{min}, \delta_{max}]$, corresponding to the physical depth range of $[0.1\text{m}, 250\text{m}]$, to suppress outliers. Subsequently, we apply min-max normalization and map the resulting scalars to the RGB space using the Turbo colormap. In the generated visualization, warm hues (red) represent proximal (foreground) regions, while cool hues (blue) denote distal (background) areas.
+Formally, the process of generating the colorized depth visualization $V_{color}$ is defined as:$$V_{color} = \mathcal{C}_{turbo}\left( \frac{\hat{D}_{inv} - \delta_{min}}{\delta_{max} - \delta_{min}} \right)$$where $\hat{D}_{inv}$ denotes the clipped inverse depth, and the normalization bounds are set to $\delta_{min} = 1/250\,\text{m}^{-1}$ and $\delta_{max} = 1/0.1\,\text{m}^{-1}$. The function $\mathcal{C}_{turbo}$ maps the normalized values from the unit interval $[0, 1]$ to the RGB color space.
+     
+\end{comment}
+\vspace{-0.3cm}
+
+\subsection{Rebar Spacing Measurement Formulation}
+\label{sub:spacing_measure}
+Accurate rebar spacing estimation requires adapting to varying capture conditions, as planar and depth-guided formulations exhibit complementary strengths. Therefore, we employ two parallel measurement branches, which are adaptively selected based on scene reliability.
+
+
+\noindent \textbf{Planar Measurement.} Utilizing the checkerboard detected in Section~\ref{sub:checkerboard}, this branch derives a global metric scale by aggregating physical-to-pixel ratios across valid grid cells. This approach provides a stable, noise-insensitive conversion effective under moderate perspective distortion. The resulting scale is applied uniformly to all rebar segments to recover physical spacing.
+
+%Accurate rebar spacing measurement cannot be reliably achieved using a single geometric formulation across all capture conditions, as \textit{Planar Measurement} and \textit{Depth-guided 3D Measurement} exhibit complementary strengths and failure modes under varying viewpoints, perspective distortions, and depth reliability. Therefore, rebar spacing is formulated using two parallel measurement branches, as described below.
+
+
+%\subsubsection{Planar Measurement Branch}
+
+%\noindent \textbf{Planar Measurement.}
+%When a reliable physical scale reference is available, rebar spacing is estimated using a planar measurement formulation. The metric scale is obtained from the checkerboard corners detected in Section~\ref{sub:checkerboard} by aggregating the ratio between known physical grid dimensions and their corresponding pixel measurements across valid cells. This scale factor provides a stable and noise-insensitive conversion from pixel distances to physical units, making planar measurement particularly effective under moderate perspective distortion and high image resolution. The resulting scale is applied uniformly to all detected rebar segments to obtain physical spacing estimates.
+
+
+% \noindent \textbf{Planar Measurement Branch.}
+% To establish the metric scale, we utilize the checkerboard corners detected in Section \ref{sub:checkerboard}. The conversion factor $S$ (cm/pixel) is computed by averaging the ratio of the known physical grid size ($D_{world}$) to the observed pixel distance ($D_{pixel}^{(i)}$) across all $N$ valid cells:
+
+% \begin{equation*}
+% S = \frac{1}{N} \sum_{i=1}^{N} \frac{D_{world}}{D_{pixel}^{(i)}}
+% \end{equation*}
+
+% This factor $S$ is subsequently applied to convert the pixel length of all detected rebar segments into physical units.
+
+
+%\subsubsection{Depth-Guided 3D Measurement Branch}
+\noindent \textbf{Depth-Guided 3D Measurement.}
+To recover the spatial structure of the rebar arrangement, 2D image coordinates $(u,v)$ are back-projected into the 3D camera coordinate system using a pinhole camera model. The principal point $(c_x,c_y)$ is approximated as the image center, and the focal length $f$ is obtained from image metadata to preserve scene-specific geometry. Given the predicted metric depth $Z$ at pixel $(u,v)$, the 3D coordinates are computed as
+{\setlength{\abovedisplayskip}{4pt}
+ \setlength{\belowdisplayskip}{4pt}\[
+X = \frac{(u - c_x) Z}{f}, \quad Y = \frac{(v - c_y) Z}{f},
+\]
+}
+where $(X, Y, Z)$ denote the 3D coordinates in the camera coordinate system.
+
+Although monocular depth estimation provides metric outputs, residual scale drift may still occur due to domain shifts or sensor variability. To compensate for this effect, a reference checkerboard of known dimensions is used to estimate a global scale correction factor. The physical spacing between two rebar joints $P_i$ and $P_j$ is then defined as
+{\setlength{\abovedisplayskip}{4pt}
+ \setlength{\belowdisplayskip}{4pt}
+\[
+\delta_{ij} = s \cdot \| P_i - P_j \|_2 .
+\]
+}
+
+Notably, the proposed formulation operates directly on sparse 3D rebar joint pairs without dense point cloud reconstruction, as full reconstruction is unnecessary for spacing measurement and prone to noise amplification along the viewing direction.
+
+
+
+% To estimate the spatial structure of the rebar arrangement, we perform back-projection to map the 2D pixel coordinates $(u, v)$ from the image plane to the 3D camera coordinate system. We adopt a pinhole camera model where the principal point $(c_x, c_y)$ is approximated as the geometric center of the image (i.e., $c_x = W/2, c_y = H/2$). Crucially, the focal length $f$ is derived directly from the image metadata (e.g., EXIF headers) to ensure scene-specific geometric accuracy.
+% Using the extracted intrinsic parameters and the predicted metric depth $Z$, the 3D coordinates $(X, Y, Z)$ are recovered as follows:$$X = \frac{(u - c_x) \cdot Z}{f}, \quad Y = \frac{(v - c_y) \cdot Z}{f}$$
+% Although the depth estimation model provides metric outputs, minor scale discrepancies may still persist due to domain shifts or sensor variations. To ensure high-precision measurements, we utilize a chessboard of known dimensions as a reference object for fine-grained calibration. We calculate a correction factor $S$ by comparing the Euclidean distance of the chessboard grid points in the reconstructed 3D space with their ground truth physical dimensions.Finally, the actual physical spacing $D_{real}$ between two rebar joints, denoted as $P_i=(X_i, Y_i, Z_i)$ and $P_j=(X_j, Y_j, Z_j)$, is computed as the scaled Euclidean distance:$$D_{real} = S \cdot \| P_i - P_j \|_2 = S \cdot \sqrt{(X_i - X_j)^2 + (Y_i - Y_j)^2 + (Z_i - Z_j)^2}$$
+\vspace{-0.3cm}
+
+\subsection{Reliability-Aware Measurement Strategy Selection (RAMS)}
+\label{sub:adaptive_modality_selection}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{multimodal_measurement_strategy_selection.png}
+    \caption{Structure of the Reliability-Aware Measurement Strategy Selection (RAMS) Module.}
+    \label{fig:strategy_selection}
+\end{figure}
+
+As discussed in Section~\ref{sub:spacing_measure}, planar measurement provides stable and precise spacing estimates when a reliable metric scale is available, but may degrade under severe perspective distortion or scale ambiguity. In contrast, depth-guided measurement alleviates perspective distortion but is sensitive to depth estimation errors. Rather than indiscriminately combining planar and depth-guided measurement strategy, the proposed system explicitly models these complementary strengths and failure modes, and formulates spacing estimation as a reliability-aware modality selection problem.
+
+
+
+
+To this end, we design a Reliability-Aware Measurement Strategy Selection (RAMS) module, illustrated in Figure~\ref{fig:strategy_selection}, which serves as an adaptive decision module for scene-level measurement strategy selection based on multimodal reliability cues. Given an input image $I$, its corresponding normalized monocular depth map $D$, and a low-dimensional geometric descriptor $\mathbf{g}$ derived from the extracted rebar structure, the RAMS module predicts the measurement branch that is expected to yield more reliable spacing estimates for the given scene. Formally, the decision process is defined as
+{\setlength{\abovedisplayskip}{4pt}
+ \setlength{\belowdisplayskip}{4pt}
+\[
+\mathcal{R}(I, D, \mathbf{g}) \rightarrow \alpha \in \{0,1\},
+\]
+}
+where $\alpha$ denotes the selection indicator. Specifically, $\alpha=0$ corresponds to the planar strategy, while $\alpha=1$ activates the depth-guided mode. The depth map $D$ captures large-scale spatial structure, while the geometric descriptor $\mathbf{g}$ encodes coarse cues indicative of depth stability and perspective distortion. These complementary representations are jointly evaluated to determine the optimal measurement path.
+
+The decision module is trained as a binary classifier using a weighted cross-entropy objective $\mathcal{L}$ to account for potential class imbalance between scenes favoring planar or depth-guided measurement. By delegating the final measurement strategy to a learned reliability predictor, the proposed design avoids rigid rule-based switching and enables robust adaptation to diverse capture conditions, preserving stable planar measurement when depth estimation is unreliable while exploiting 3D cues when planar assumptions are violated.
+
+
+
+
+% To dynamically determine the optimal processing modality (2D or 3D) for a given scene, we propose a light-weight, hybrid classification network that fuses high-level spatial features with explicit geometric descriptors. The system processes two primary inputs: a global depth map and a geometric feature vector. The raw depth data is first normalized to the range $[0, 1]$ and resized to $224 \times 224$ pixels. Concurrently, a geometric vector $v_{geom} \in \mathbb{R}^2$ is extracted, consisting of \texttt{mean\_diff} (average depth variation) and \texttt{top\_bottom\_diff} (vertical depth gradient). These explicit descriptors capture macro-scale spatial characteristics, providing a robust complement to learned visual features.
+
+% For feature extraction, we employ a ResNet-18 backbone, modifying its first convolutional layer to accept single-channel input. To leverage transfer learning, the weights of this new layer are initialized by averaging the pre-trained ImageNet RGB weights:
+% $$ W'_{conv1} = \frac{1}{3} \sum_{c=1}^{3} W_{conv1}^{(c)} $$
+% where $W_{conv1}^{(c)}$ denotes the weight parameters corresponding to the $c$-th input channel of the original pre-trained kernel. This backbone extracts a 512-dimensional visual feature vector $f_{depth}$, which is subsequently concatenated with the geometric vector $v_{geom}$ to form the final representation:
+% $$ f_{fused} = \operatorname{Concat}(f_{depth}, v_{geom}) $$
+% The resulting fused representation ($514$ dimensions) is processed by a Multilayer Perceptron (MLP) head equipped with Dropout regularization to predict the optimal modality.
+
+% During the training phase, the model utilizes the Adam optimizer. To effectively address potential class imbalances between 2D-suitable and 3D-suitable samples, we employ a Weighted Cross-Entropy Loss:
+% $$ \mathcal{L} = - \sum_{i} w_{y_i} \log(p_{y_i}) $$
+% where $\mathcal{L}$ denotes the total loss, $y_i$ represents the ground truth label for the $i$-th sample, $p_{y_i}$ is the predicted probability corresponding to the true class, and $w_{y_i}$ is the inverse class frequency weight. In conclusion, by synergizing data-driven visual representations with explicit geometric rules, this adaptive module effectively resolves ambiguity in complex environments, ensuring that the subsequent measurement stage utilizes the most reliable data source.
+\vspace{-0.3cm}
+
+
+\section{Experiments}
+\label{sec:experiments}
+%\noindent 
+%\textbf{Datasets} 
+
+\vspace{-0.3cm}
+
+%\subsection{Experimental Setting}
+\subsection{Datasets}
+%\noindent \textbf{Datasets.} 
+
+
+To evaluate the proposed framework under practical construction conditions, we constructed a custom dataset captured using monocular mobile RGB cameras, without relying on depth sensors. As illustrated in Fig.~\ref{fig:dataset_scenarios}, the dataset covers four representative scenarios: \textit{indoor vertical}, \textit{indoor slab}, \textit{outdoor vertical}, and \textit{outdoor slab} structures, with diverse viewpoints and environmental conditions. The indoor vertical scenario analyzes multi-layer rebar and viewing-angle effects, whereas the others represent typical hydraulic engineering sites. Ground-truth spacing was obtained by averaging manual measurements performed by civil engineering experts. The dataset contains 6,142 annotated rebar intersections and 2,073 rebar line segments for spacing evaluation.
+
+
+
+
+\begin{figure}[htbp]
+    \centering
+    % \newcommand{\targetheight}{4cm}
+    \begin{subfigure}[b]{0.45\linewidth}
+        \centering
+        \includegraphics[width=\linewidth, keepaspectratio]{pic/in_ver_20250502_134642_2.jpg}
+        \caption{indoor vertical}
+        \label{subfig:indoor_vertical}
+    \end{subfigure}%
+    % \hfill
+    \begin{subfigure}[b]{0.45\linewidth}
+        \centering
+        \includegraphics[width=\linewidth,trim=16 12 16 12,clip,keepaspectratio]{pic/indoor_slab_IMG_6293_2.jpg}
+        \caption{indoor slab}
+        \label{subfig:indoor_slab}
+    \end{subfigure}
+    % --- 第二列 (Second Row) ---
+    \begin{subfigure}[b]{0.45\linewidth}
+        \centering
+        %height=\linewidth,trim=0 274 0 274, clip,angle=90
+        \includegraphics[width=\linewidth,keepaspectratio ]{pic/out_ver_20250624_135335_2.jpg}
+        \caption{outdoor vertical}
+        \label{subfig:outdoor_vertical}
+    \end{subfigure}%
+    % \hfill
+    \begin{subfigure}[b]{0.45\linewidth}
+        \centering
+        \includegraphics[width=\linewidth,  keepaspectratio]{pic/out_slab20250620_115056_2.jpg}
+        \caption{outdoor slab}
+        \label{subfig:outdoor_slab}
+    \end{subfigure}
+    
+    \caption{Sample images of four distinct scenarios: (a) indoor vertical, (b) indoor slab, (c) outdoor vertical, and (d) outdoor slab.}
+    \label{fig:dataset_scenarios}
+\end{figure}
+
+%\subsubsection{Hyperparameter}
+% \noindent \textbf{Hyperparameter.} 
+% In the Line Grouping module, the tolerance angle $\theta$ is set to $30^\circ$.
+% For the Depth Estimation Model, We follow the official configuration to clip depths to the physical range of $[0.1\text{m}, 250\text{m}]$.
+ \vspace{-0.3cm}
+
+\subsection{Experimental Results}
+
+Table~\ref{tab:experimental_results} summarizes the Mean Relative Error (MRE) obtained using the proposed RAMS with adaptive modality selection, as well as its two fixed measurement strategy, namely the planar and depth-guided methods (Sec.~\ref{sub:spacing_measure}). Experiments are conducted on three representative scenarios relevant to hydraulic engineering structures: \textit{indoor slab}, \textit{outdoor slab}, and \textit{outdoor vertical}.
+
+
+
+
+
+
+\begin{table}[ht]
+\centering
+\caption{Comparison of MRE across different scenarios.}
+\label{tab:experimental_results}
+\resizebox{.8\columnwidth}{!}{%
+    \begin{tabular}{lccc}
+     \toprule
+    & \multicolumn{3}{c}{\textbf{MRE (\% $\downarrow$)}} \\
+    \cmidrule(lr){2-4}
+    \textbf{Scenario} 
+    & \textbf{Planar} 
+    & \textbf{Depth-Guided} 
+    & \textbf{RAMS} \\
+        \midrule
+
+    Dynamic Selection & x & x &\checkmark\\
+    \midrule
+    Indoor slab      & 3.99\%  & 5.34\%  & \textbf{3.93\%} \\
+    Outdoor slab     & 17.24\% & \textbf{7.28\%} & 11.45\% \\
+    Outdoor vertical & \textbf{10.36\%} & 47.61\% & 18.06\% \\
+   % \midrule
+   % \textbf{Average} & \textbf{10.53\%} & \textbf{20.07\%} & \textbf{11.15\%} \\
+    \bottomrule
+    \end{tabular}%
+}
+\ifblind
+\else
+  \vspace{-0.5cm}
+\fi
+\end{table}
+
+%\noindent To evaluate environmental adaptability, we demonstrate how the proposed adaptive strategy effectively mitigates the failure modes of individual sensing modalities.
+
+In the indoor slab scenario, our method achieves a minimum relative error of 3.93\% by favoring planar measurements under stable conditions. In the outdoor slab case, severe perspective distortion degrades planar measurement accuracy to 17.24\%, while depth-guided measurement remains effective at 7.28\%. Conversely, the outdoor vertical scenario reveals a significant failure in depth-based measurement, where errors spike to 47.61\% due to missing ground references, whereas planar estimation remains reliable at 10.36\%. Although not always outperforming the best fixed single-formulation result, our adaptive strategy successfully avoids these severe failure cases while maintaining balanced errors of 11.45\% and 18.06\%, effectively bridging the reliability gap of single-modality approaches.
+
+
+%\noindent {Analysis of Environmental Adaptability:}
+%The results highlight the inherent limitations of relying on a single sensing modality and the robustness of our adaptive strategy:
+
+%\begin{itemize}
+    %\item \textbf{Indoor Slab (Ideal Conditions):} In controlled environments with stable lighting, all methods performed reasonably well. Our Dynamic method achieved the lowest error (3.93\%), effectively leveraging the high resolution of features from the Planar Measurement Branch, validated by consistent depth cues.
+
+    %\item \textbf{Outdoor Slab (Perspective Challenge):} The Planar Measurement Branch suffered significantly (17.24\% error) due to severe perspective distortion inherent in large-scale horizontal measurements. Conversely, the Depth-Guided Measurement Branch excelled (7.28\%) as it operates independently of visual perspective. Here, our Dynamic strategy successfully detected the instability of the Planar Branch and shifted weight towards depth-guided data, reducing the error to 11.45\%—a substantial improvement over the pure planar approach.
+
+    %\item \textbf{Outdoor Vertical (Depth Challenge):} This scenario revealed the critical failure mode of the 3D sensor. Due to the lack of ground plane references and potential scattering from vertical rebar structures, the Depth-Guided Measurement Branch exhibited a catastrophic error rate of 47.61\%. The Planar Measurement method, unaffected by depth noise, remained stable (10.36\%). Crucially, our system identified the low depth reliability and prioritized planar features, containing the error at 18.06\% and preventing the system-level failure observed in the pure depth-guided baseline.
+%\end{itemize}
+
+\vspace{-0.3cm}
+
+\subsection{Ablation Study}
+\subsubsection{Runtime Optimization and Scale Accuracy}
+
+
+To evaluate the feasibility of the cloud-based measurement API for interactive deployment, we compare the proposed system with an unoptimized prototype that employs global exhaustive checkerboard detection~\cite{OpenCV-Exhaustive} and per-request model initialization. To reduce latency, persistent model loading is introduced to eliminate repeated I/O overhead, and a pyramid-based ROI strategy (Sec.~\ref{sub:checkerboard}) is adopted for efficient checkerboard localization. As shown in Table~\ref{tab:performance_optimization}, these optimizations reduce the total execution time from 542.57\,s to 6.65\,s, thereby meeting the requirements for interactive feedback.
+
+To verify that the improved efficiency does not compromise measurement accuracy, we further evaluate checkerboard localization performance. The adopted checkerboard-based geometric scale estimation approach achieves an mAP of 0.535, reflecting its inherently selective nature, which intentionally excludes low-quality samples affected by motion blur or severe occlusion. By retaining only high-confidence geometric patterns, the system maintains reliable metric scale estimation despite the stricter detection criteria.
+
+
+%Regarding the detection strategy, although the YOLO model typically yields superior detection recall (mAP 0.923) compared to the OpenCV-Exhaustive method (mAP 0.535 as shown in Table \ref{tab:performance_optimization}), the latter was selected as the final strategy. This decision prioritizes \textit{geometric rigidity} over raw detection frequency. While YOLO excels at localizing the target region, it lacks the intrinsic capability to extract the sub-pixel corner coordinates essential for accurate metric conversion. 
+
+%The lower mAP of the exhaustive method, as reflected in Table \ref{tab:performance_optimization}, serves as a strict quality control mechanism that automatically rejects suboptimal samples affected by motion blur or occlusion. Consequently, the proposed system achieves high-speed inference without compromising the reliability of the metric scale.
+
+
+\begin{table}[ht]
+\centering
+\caption{Runtime efficiency and checkerboard detection accuracy across optimization stages.}
+
+\label{tab:performance_optimization}
+\resizebox{\columnwidth}{!}{%
+\begin{threeparttable}
+
+    \begin{tabular}{l c c c}
+    \toprule
+   & \textbf{Baseline} & \textbf{Stage I } & \textbf{Stage II} \\
+    \midrule
+        \multicolumn{4}{c}{\textbf{Runtime Efficiency} (Time in Seconds $\downarrow$)} \\
+    \midrule
+    Load Model & 24.56 & 11.69 & 0.19 \\
+    Load Image & 0.01  & 0.03  & 0.01 \\
+    Inference     & 518.00& 498.02& 6.45 \\
+    \textbf{Total Time} & 542.57 & 509.74 & \textbf{6.65} \\
+    \midrule
+    
+    \multicolumn{4}{c}{\textbf{Checkerboard Detection Performance} (mAP $\uparrow$)  } \\
+    \midrule
+    Detection Method & Global-Exhaustive & Global-Exhaustive & Pyramid-ROI \\
+    \textbf{Accuracy (mAP)} & 0.413 & 0.413 & \textbf{0.535} \\
+    \bottomrule
+    
+    \end{tabular}%
+
+    
+\begin{tablenotes}[flushleft]
+\item \textit{Note:} Stage I applies system-level runtime optimizations, while Stage II replaces the checkerboard detection with the pyramid-based ROI strategy.
+\end{tablenotes}
+\end{threeparttable}
+
+}
+
+\end{table}
+
+
+\vspace{-0.5cm}
+\subsubsection{Component-wise Analysis for Intersection Detection}
+
+We conduct a data-centric ablation study to analyze the impact of training data composition on rebar intersection detection. YOLO12~\cite{tian2025yolov12} is used as the backbone detector, and the training set is progressively enriched from an open-source dataset by incorporating data augmentation, vertical rebar data, and slab rebar data.
+
+Two held-out construction sites, denoted as Site~A and Site~B, are used for validation to examine generalization trends under different training configurations. The performance of each configuration is summarized in Table~\ref{tab:ablation_matrix}, evaluated using the F1-score and mean Average Precision (mAP). The first row corresponds to training with open-source data only. All additional training data are collected from sites disjoint from the evaluation datasets.
+
+
+
+As shown in Table~\ref{tab:ablation_matrix}, incorporating vertical and slab data leads to consistent improvements across both validation sites. Based on this optimal configuration, we further evaluate the final model on Site~A, Site~B, and a separate construction site, denoted as Site~C, which serves as the final test set. As summarized in Table~\ref{tab:performance_comparison}, the model achieves an F1-score of 0.569 and an mAP of 0.522 on Site~C.
+
+
+%We sought to examine the generalization capability of YOLO12 \cite{tian2025yolov12} when applied to real-world construction environments. The training set was expanded from an open-source baseline by sequentially integrating data augmentation, vertical data, and slab data. The performance resulting from this stepwise integration are detailed in Table \ref{tab:ablation_matrix}, measured by F1-score and Mean Average Precision (mAP) to benchmark both detection reliability and localization accuracy. The models were validated against two distinct construction site datasets: Site A and Site B, which served as environments to validate robust generalization.
+
+\begin{table}[ht]
+  \centering
+  \caption{Ablation study on the proposed components for rebar intersection detection.}
+  \label{tab:ablation_matrix}
+  \resizebox{\columnwidth}{!}{% Scale table to text width
+    \begin{tabular}{ccccccc}
+      \toprule
+      \multicolumn{3}{c}{\textbf{Components}} & \multicolumn{2}{c}{\textbf{Site A}} & \multicolumn{2}{c}{\textbf{Site B}} \\
+      \cmidrule(lr){1-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+      \textbf{Aug.} & \textbf{vertical} & \textbf{slab} & \textbf{F1 Score} & \textbf{mAP} & \textbf{F1 Score} & \textbf{mAP} \\
+      \midrule
+      & & & 0.039 & 0.008 & 0.172 & 0.078 \\
+      \checkmark & & & 0.013 & 0.003 & 0.086 & 0.029 \\
+      \checkmark & \checkmark & & 0.311 & 0.174 & 0.256 & 0.135 \\
+      & \checkmark & \checkmark & 0.375 & 0.272 & 0.437 & 0.324 \\
+      \checkmark & \checkmark & \checkmark & \textbf{0.386} & \textbf{0.303} & \textbf{0.442} & \textbf{0.347} \\
+      \bottomrule
+    \end{tabular}%
+  }
+\end{table}
+
+\begin{table}[ht]
+  \centering
+  \caption{Performance comparison of the final model across validation sites (A, B) and a test site (C).}
+  \label{tab:performance_comparison}
+  \resizebox{0.85\columnwidth}{!}{
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Dataset} & \textbf{Precision} & \textbf{Recall} & \textbf{F1 Score} & \textbf{mAP} \\
+    \midrule
+    Site A  & 0.387 & 0.385 & 0.386 & 0.303 \\
+    Site B  & 0.429 & 0.455 & 0.442 & 0.347 \\
+    \midrule
+    Site C & 0.598 & 0.542 & 0.569 & 0.522 \\
+    \bottomrule
+  \end{tabular}
+  }
+  \vspace{-0.3cm}
+
+\end{table}
+
+% The ablation study confirms that while open-source data provides a foundation for instance volume, it is insufficient for the specialized task of rebar intersection detection in varying field conditions. The Vertical and Slab components play a pivotal role in bridging the domain gap. The Vertical dataset is essential for reducing confusion with site artifacts (e.g., magnet bars), while the Slab dataset ensures robustness across different rebar orientations. The Full Model, combining all components, is therefore identified as the optimal configuration for deployment on the final Test set
+
+%Table \ref{tab:ablation_matrix} shows that training on open-source data alone yields limited generalization performance. Incorporating the Vertical and Slab datasets substantially improves robustness by reducing false positives caused by site-specific artifacts and enhancing tolerance to varying rebar orientations. Building upon this optimal configuration, we evaluated the final model against the test set. As presented in Table \ref{tab:performance_comparison}, the model generalizes effectively to the test set, with a F1-score of 0.569 and a mAP of 0.522, indicating higher reliability in the target application environment.
+
+\vspace{-0.3cm}
+
+\subsubsection{Effect of Viewing Angle on Spacing Accuracy}
+%Table \ref{tab:different_angle} quantifies the minimum relative errors of Planar and Depth-Guided methods within a dual-layer Indoor Vertical scenario. The results demonstrate that the Planar method ensures stability in lateral dimensions ($x, y$), whereas the Depth-Guided method significantly outperforms in the $z$-axis (depth). Notably, at a $45^\circ$ oblique angle, geometric projection renders the $z$-axis partially discernible to the Planar method, inadvertently reducing its error. However, since neither method prevails universally across all metrics, relying on a singular approach is suboptimal, underscoring the necessity for the RAMS.
+
+
+Table~\ref{tab:different_angle} reports the minimum relative errors of the planar and depth-guided measurement strategy under a dual-layer indoor vertical scenario. Under frontal views, the planar formulation provides stable estimates along the $x$ and $y$ directions, while depth estimation ($z$) is severely ill-posed. In contrast, the depth-guided formulation achieves substantially lower errors along the $z$ axis. Under oblique views ($45^\circ$), perspective effects alter the observability of different measurement axes. For the planar formulation, depth information ($z$) becomes partially projected onto the image plane, leading to reduced but view-dependent depth errors, while accuracy along the $x$ direction degrades due to geometric distortion. For the depth-guided formulation, oblique views improve estimation along the $x$ direction by leveraging depth cues, whereas no consistent improvement is observed for the $y$ and $z$ directions. Overall, neither formulation is consistently reliable across all axes and views, motivating an adaptive reliability-aware strategy for formulation selection.
+
+
+
+
+\begin{table}[ht]
+    \centering
+    \caption{Comparison of MREs between planar and depth-guided methods in different views.}
+    \label{tab:different_angle}
+     \resizebox{\columnwidth}{!}{
+    \begin{tabular}{lcccc}
+        \toprule
+        \multirow{2}{*}{\makecell{\textbf{Measurement} \\ \textbf{Axis}}} & \multicolumn{2}{c}{\textbf{Front View}} & \multicolumn{2}{c}{\textbf{Oblique View}} \\ 
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+         & \textbf{Planar} & \textbf{Depth-Guided} & \textbf{Planar} & \textbf{Depth-Guided} \\ 
+        \midrule
+        X & 4.47\% & 4.86\% & 8.34\% & 0.57\% \\
+        Y & 3.26\% & 2.13\% & 0.74\% & 4.75\% \\
+        %Back Layer X & 1.63\% & 1.50\% & 0.29\% & 8.17\% \\
+        Z      & 35.10\% & 1.64\% & 24.26\% & 6.00\% \\ 
+        \bottomrule
+    \end{tabular}
+    }
+   
+\ifblind
+\else
+  \vspace{-0.3cm}
+\fi
+
+\end{table}
+\begin{comment}
+\begin{table}[hbt]
+%\small
+ 
+  \centering
+  \caption{Quantitative results of domain adaptation from Cityscape, and KITTI to BDD100K.}
+  \label{table:AP_ck2b}
+  \resizebox{\linewidth}{!}{
+ \midsepremove
+\begin{tabular}{c | c | c | c }
+
+\toprule
+\toprule
+Setting & Source & Methods & AP on car\\
+
+\toprule
+ \multirow{5}{*}{Single Source} & \multirow{5}{*}{C} &FRCNN \cite{faster-RCNN} & 44.6  \\
+ &&SW \cite{saito2019strong}&45.5\\
+ &&CRDA \cite{CRDA}&46.5\\
+ &&UMT \cite{deng2021unbiased}&47.5\\
+ &&UBT \cite{UBT}&48.4\\
+ 
+\midrule
+\multirow{5}{*}{Single Source} & \multirow{5}{*}{K} &FRCNN \cite{faster-RCNN}& 28.6  \\
+ &&SW \cite{saito2019strong}&29.6\\
+ &&CRDA \cite{CRDA}&30.8\\
+ &&UMT \cite{deng2021unbiased}&35.4\\
+ &&UBT \cite{UBT}&33.8\\
+ \midrule
+\multirow{5}{*}{Source-combined} & \multirow{5}{*}{C+K} &FRCNN \cite{faster-RCNN}& 43.2  \\
+ &&SW \cite{saito2019strong}&41.9\\
+ &&CRDA \cite{CRDA}&43.6\\
+ &&UMT \cite{deng2021unbiased}&47.0\\
+ &&UBT \cite{UBT}&47.6\\
+ \midrule
+ Source-free DA&C&  SED\cite{AAAI2021_SED}&50.4\\
+\midrule
+\multirow{4}{*}{Multi-source DA} & \multirow{4}{*}{C+K} &MDAN \cite{MDAN}& 43.2  \\
+ &&$M^{3}$SDA \cite{M3SDA}&44.1\\
+ &&DMSN \cite{yao2021multi}&49.2\\
+ &&TRKP \cite{wu2022target}&58.2\\
+
+ \midrule
+\multirow{4}{*}{Privacy-preserving Multi-source} & \multirow{4}{*}{C, K} &FedAvg \cite{FedAvg}& 44.1  \\
+ &&FADA \cite{FedDA}&43.2\\ 
+ &&FedMA \cite{FedMA}&46.0\\
+ && \textbf{Ours} & \textbf{56.0} \\
+ \midrule
+ Oracle & BDD100K & FRCNN \cite{faster-RCNN}& 60.2 \\
+
+\bottomrule 
+\bottomrule
+\end{tabular}}
+\end{table}
+\end{comment}
+% \ifblind
+% \else
+%   \vspace{-0.5cm}
+% \fi
+\section{Conclusion}
+
+
+This work addresses monocular rebar spacing inspection as a reliability-aware measurement problem rather than a fixed-modality estimation task. By explicitly modeling the complementary strengths and failure modes of planar and depth-guided formulations, the proposed MoMS framework enables adaptive strategy selection that mitigates the catastrophic errors commonly observed in single-method approaches under challenging viewpoints. In addition to improved robustness, the design focuses on practical deployment by relying on sparse geometric cues and lightweight calibration. Future work will explore leveraging depth-camera data during training to improve the depth-guided formulation, while preserving single mobile image inference at deployment time.
+
+
+%Beyond improving robustness, the design emphasizes practical deployability by relying on sparse geometric cues and lightweight calibration instead of dense reconstruction, enabling cloud-based mobile inspection in real construction environments.
+%
+
+
+% \color{cyan}
+% Beyond accuracy, the proposed system emphasizes operational reliability, interpretability, and deployability, which are critical for on-site construction inspection.
+% \color{black}
+
+% By synergizing planar geometric cues with spatial depth information, we established a reliability-aware framework that dynamically selects the optimal measurement formulation—Planar Measurement or Depth-Guided 3D Measurement—based on scene-specific geometric consistency. Experimental results demonstrate that this adaptive approach effectively mitigates the failure modes inherent to single-modality baselines, particularly under conditions of severe perspective distortion or depth ambiguity. Furthermore, the implementation of algorithmic optimizations significantly reduced the total execution time, validating the system’s feasibility for real-time, mobile-based applications. Ultimately, this work presents a cost-effective, non-contact solution for pre-pour quality control, significantly enhancing both inspection efficiency and occupational safety in complex infrastructure projects.
+
+\begin{comment}
+    
+\section*{Acknowledgment}
+
+This work was supported by the National Science and Technology Council (NSTC), Taiwan, under grant number 114-2221-E-194-030-MY3, and by the NCHC and the NIAR, Taiwan, for providing computational resources.
+
+\end{comment}
+
+\vfill\pagebreak
+
+
+% References should be produced using the bibtex program from suitable
+% BiBTeX files (here: strings, refs, manuals). The IEEEbib.bst bibliography
+% style file from IEEE produces unsorted bibliography list.
+% -------------------------------------------------------------------------
+\clearpage
+\bibliographystyle{IEEEbib}
+\bibliography{refs}
+
+\end{document}
