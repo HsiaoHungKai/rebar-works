@@ -420,6 +420,28 @@ def convert_rho_theta_to_line_equation(rho, theta) -> tuple:
 
 
 def prune_lines_by_length(pc_points, threshold=2.0):
+    """
+    Removes unusually short or long line segments using a median absolute deviation filter.
+
+    This helper computes the Euclidean length of every line segment in the input list,
+    estimates the typical length distribution using the median and median absolute deviation
+    (MAD), and keeps only the segments whose lengths fall within the acceptable range.
+    It is used to suppress spurious connections that are inconsistent with the dominant
+    structural spacing of the detected rebar grid.
+
+    Args:
+        pc_points (list): List of line segments in the format [[x1, y1], [x2, y2]].
+        threshold (float, optional): Number of MADs allowed from the median length.
+            Larger values keep more segments. Default is 2.0.
+
+    Returns:
+        list: Filtered list of line segments whose lengths are within the robust
+        median-based bounds.
+
+    Note:
+        If all line lengths are very similar, MAD may become 0, in which case only
+        segments exactly matching the median length will be retained.
+    """
     # Get all lengths
     lengths = []
     for point in pc_points:
@@ -676,6 +698,25 @@ def get_lines(image_path, model_path, logger=None, threshold: float = 10) -> str
 
 
 def point_on_hough_line(x, y, theta, rho, tolerance=1e-2):
+    """
+    Checks whether a point lies on or very near a Hough-space line.
+
+    The line is represented in polar form as ``x * cos(theta) + y * sin(theta) = rho``.
+    This function evaluates that equation at the given point and compares the residual
+    against a tolerance to account for floating-point error and approximate matches.
+
+    Args:
+        x (float): X-coordinate of the point.
+        y (float): Y-coordinate of the point.
+        theta (float): Angle of the Hough line normal in radians.
+        rho (float): Perpendicular distance from the origin to the line.
+        tolerance (float, optional): Maximum absolute residual allowed for the point
+            to be considered on the line. Default is 1e-2.
+
+    Returns:
+        bool: True if the point satisfies the line equation within the tolerance,
+        otherwise False.
+    """
     return abs(x * np.cos(theta) + y * np.sin(theta) - rho) < tolerance
 
 
@@ -756,6 +797,16 @@ def get_points_from_direction(start, end, direction):
 
 
 def horizontal_or_vertical(direction) -> str:
+    """
+    Converts a cardinal principal-component direction into a coarse orientation label.
+
+    Args:
+        direction (str): Direction string returned by ``get_pc_direction``.
+            Expected values are "left", "right", "up", or "down".
+
+    Returns:
+        str: "horizontal" for left/right directions and "vertical" for up/down directions.
+    """
     if direction == "left" or direction == "right":
         return "horizontal"
     else:
@@ -763,12 +814,30 @@ def horizontal_or_vertical(direction) -> str:
 
 
 def get_vertice_from_box(box) -> list:
+    """
+    Computes the center point of a bounding box.
+
+    Args:
+        box (list or np.ndarray): Bounding box in ``[x1, y1, x2, y2]`` format.
+
+    Returns:
+        list: Center coordinate as ``[x_center, y_center]``.
+    """
     x_center = (box[0] + box[2]) / 2
     y_center = (box[1] + box[3]) / 2
     return [x_center, y_center]
 
 
 def load_config(path="config.yaml"):
+    """
+    Loads the YAML configuration file used to control optional pipeline behavior.
+
+    Args:
+        path (str, optional): Path to the YAML configuration file. Default is ``config.yaml``.
+
+    Returns:
+        dict: Parsed configuration dictionary.
+    """
     with open(path, "r") as f:
         config = yaml.safe_load(f)
     return config
