@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`sam3_inference.py` is the main entrypoint and contains model loading, batch image discovery, and JSON/NPZ result serialization. `run_sam3_on_twcc.sh` automates remote execution on TWCC, while `twccli_tutorial.md` is the student-facing TWCC CLI walkthrough and should stay generic, instructional, and free of personal or account-specific information. `images/` holds local input images, `results/` stores downloaded or local inference outputs, and `visualize.ipynb` is for ad hoc inspection.
+`sam3_inference.py` is the main entrypoint and contains model loading, batch image discovery, and JSON/NPZ result serialization. `run_sam3_on_twcc.sh` automates remote execution on TWCC, while `twccli_tutorial.md` is the student-facing TWCC CLI walkthrough and should stay generic, instructional, and free of personal or account-specific information. `images/` holds local input images, `results/` stores downloaded or local inference outputs, and `visualize.ipynb` is for ad hoc inspection. 
 
 ## Build, Test, and Development Commands
 Create a local environment, then install dependencies:
