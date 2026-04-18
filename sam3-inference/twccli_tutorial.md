@@ -1,0 +1,222 @@
+# TWCC CLI Tutorial
+
+This tutorial walks through a basic `twccli` workflow for creating a TWCC container, connecting to it, preparing the environment, running a Python script, and cleaning up when finished.
+
+## Prerequisites
+
+Before you start, make sure you have:
+
+- `twccli` installed and authenticated on your local machine
+- a valid TWCC site ID
+- a PEM key file for SSH access
+- a Python script you want to test, for example `script.py`
+- any credentials or API tokens your script requires
+
+### Install `twccli`
+
+The key setup points from the official guide are:
+
+- `twccli` can be installed on Linux or macOS
+- some TWCC Linux environments already include `twccli`
+- install it with:
+
+```bash
+pip install TWCC-CLI
+```
+
+If your environment uses Python 3, use:
+
+```bash
+pip3 install TWCC-CLI
+```
+
+After installation, confirm the CLI version:
+
+```bash
+twccli config version
+```
+
+For a clearer step-by-step guide with UI screenshots, see:
+
+- https://man.twcc.ai/@twccdocs/guide-cli-install-linux-zh
+
+### Sign in to `twccli`
+
+Before signing in, prepare:
+
+- your TWCC project ID
+- your TWCC API key
+
+For a clearer sign-in guide with UI screenshots, see:
+
+- https://man.twcc.ai/@twccdocs/guide-cli-signin-zh
+
+Then initialize the CLI:
+
+```bash
+twccli config init
+```
+
+You can verify the active account and project after login with:
+
+```bash
+twccli config whoami
+```
+
+### Get a PEM Key
+
+Before you connect to a TWCC Linux container, you need a key pair. This key pair is the credential used to log in to Linux virtual compute instances.
+
+You can create the key pair in either of these ways:
+
+- through the TWCC web UI when creating a virtual compute instance
+- through the Key Pair management page in the TWCC web UI
+- through the CLI with:
+
+```bash
+twccli mk key -n key1
+```
+
+You can check existing key pairs with:
+
+```bash
+twccli ls key
+```
+
+After creating a key pair, download the `.pem` file immediately and keep it safe. TWCC does not keep or manage the private key for you, and without that `.pem` file you will not be able to connect to the Linux instance.
+
+For a clearer guide with UI screenshots and the full key-pair workflow, see:
+
+- https://man.twcc.ai/@twccdocs/guide-vcs-keypair-zh
+
+Replace these placeholders before running commands:
+
+- `<CURRENT_DIR>`: local working directory
+- `<SITE_ID>`: your TWCC site ID
+- `<PEM_LOCATION>`: path to your PEM file
+- `<PORT>`: SSH port shown by `twccli ls ccs`
+- `<IP_ADDRESS>`: container IP shown by `twccli ls ccs`
+- `HF_TOKEN`: an example environment variable for scripts that need a Hugging Face token
+
+## 1. Create a TWCC Container
+
+Run these commands on your local machine:
+
+```bash
+twccli ls ccs -itype
+twccli ls ccs -img
+```
+
+These two commands list available instance types and container images. After checking the options, create your container with `twccli mk ccs`.
+
+```bash
+twccli mk ccs \
+  -n "twccli-tutorial" \
+  -itype "PyTorch" \
+  -img "pytorch-26.02-py3:latest" \
+  -gpu 1 \
+  -wait \
+  -table
+```
+
+This creates a GPU container named `twccli-tutorial` and waits until it is ready.
+
+After `twccli mk ccs` finishes, TWCC shows the site ID in the output table. For example:
+
+```text
+Passing current credential information to new computing resources.
++ CCS Site:5873097 ---------+--------+
+| id      | name            | status |
++---------+-----------------+--------+
+| 5873097 | twccli-tutorial | Ready  |
++---------+-----------------+--------+
+```
+
+In this example, the site ID is `5873097`.
+
+You can also check currently running CCS resources with:
+
+```bash
+twccli ls ccs
+```
+
+## 2. Get Connection Information
+
+List the container details and note the IP address and SSH port:
+
+```bash
+twccli ls ccs -s <SITE_ID> -gssh -table
+```
+
+If needed, fix your key permissions once:
+
+```bash
+chmod 400 <PEM_LOCATION>
+```
+
+## 3. Upload the Script and Connect
+
+Upload your Python script from your local machine to the TWCC container:
+
+```bash
+scp -i <PEM_LOCATION> -P <PORT> script.py u7740467@<IP_ADDRESS>:~/
+```
+
+Then connect to the container:
+
+```bash
+ssh -p <PORT> u7740467@<IP_ADDRESS>
+```
+
+## 4. Prepare the Remote Environment
+
+Run these commands inside the TWCC container:
+
+```bash
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+bash miniconda.sh -b -p $HOME/miniconda3
+
+$HOME/miniconda3/bin/conda init bash
+source ~/.bashrc
+
+pip install transformers Pillow requests
+```
+
+This installs Miniconda, initializes Conda for the shell, and installs example Python packages you may need. Adjust the package list for your own script.
+
+## 5. Run Your Script
+
+Still inside the TWCC container, run your script:
+
+```bash
+python script.py
+```
+
+If your script depends on secrets such as `HF_TOKEN`, export them before running:
+
+```bash
+export HF_TOKEN="HF_TOKEN"
+python script.py
+```
+
+The original notes mention an NVIDIA driver warning caused by a driver and PyTorch mismatch. The example script still ran successfully, so this warning does not necessarily block execution. If GPU performance becomes an issue, use a container image with a more compatible software stack.
+
+## 6. Clean Up the Container
+
+When you are finished, delete the container from your local machine to avoid extra billing:
+
+```bash
+twccli rm ccs --site-id <SITE_ID> --force
+```
+
+## Quick Summary
+
+The end-to-end flow is:
+
+1. Create a container with `twccli mk ccs`
+2. Get the IP and port with `twccli ls ccs`
+3. Upload `script.py` with `scp`
+4. Connect with `ssh`
+5. Install dependencies inside the container
+6. Export any required environment variables and run your script
+7. Remove the container when done
