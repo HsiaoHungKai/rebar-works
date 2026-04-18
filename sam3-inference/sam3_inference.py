@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from typing import Union, List, Optional, Tuple, Dict
 from PIL import Image
-from transformers import Sam3Model, Sam3Processor
+from transformers import Sam3Model, Sam3Processor, Sam3TrackerModel, Sam3TrackerProcessor
 import requests
 from io import BytesIO
 import argparse
@@ -34,6 +34,7 @@ class SAM3Inference:
         device: Optional[str] = None,
         half_precision: bool = True
     ):
+        self.model_id = model_id
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.use_fp16 = half_precision and self.device == "cuda"
 
@@ -42,6 +43,8 @@ class SAM3Inference:
         # Load model and processor
         self.model = Sam3Model.from_pretrained(model_id).to(self.device)
         self.processor = Sam3Processor.from_pretrained(model_id)
+        self.tracker_model: Optional[Sam3TrackerModel] = None
+        self.tracker_processor: Optional[Sam3TrackerProcessor] = None
 
         # Optimize model
         self.model.eval()
@@ -49,12 +52,36 @@ class SAM3Inference:
             self.model = self.model.half()
 
         # Compile model for faster inference (PyTorch 2.0+)
+        self.model = self._maybe_compile_model(self.model, model_name="SAM3 text model")
+
+    def _maybe_compile_model(self, model: torch.nn.Module, model_name: str) -> torch.nn.Module:
+        """Compile a CUDA model when torch.compile is available."""
         if hasattr(torch, 'compile') and self.device == "cuda":
             try:
-                self.model = torch.compile(self.model, mode="reduce-overhead")
-                print("Model compiled with torch.compile")
+                model = torch.compile(model, mode="reduce-overhead")
+                print(f"{model_name} compiled with torch.compile")
             except Exception as e:
-                print(f"Could not compile model: {e}")
+                print(f"Could not compile {model_name}: {e}")
+        return model
+
+    def _load_tracker_components(self):
+        """Lazily load the tracker model/processor used for point prompts."""
+        if self.tracker_model is not None and self.tracker_processor is not None:
+            return
+
+        print(f"Loading SAM3 tracker model to {self.device} (FP16: {self.use_fp16})...")
+
+        self.tracker_model = Sam3TrackerModel.from_pretrained(self.model_id).to(self.device)
+        self.tracker_processor = Sam3TrackerProcessor.from_pretrained(self.model_id)
+
+        self.tracker_model.eval()
+        if self.use_fp16:
+            self.tracker_model = self.tracker_model.half()
+
+        self.tracker_model = self._maybe_compile_model(
+            self.tracker_model,
+            model_name="SAM3 tracker model"
+        )
 
     def _normalize_images(
         self,
@@ -88,6 +115,53 @@ class SAM3Inference:
                 raise TypeError(f"Unsupported image type: {type(img)}")
 
         return pil_images
+
+    def _normalize_point_inputs(
+        self,
+        input_points: List,
+        input_labels: List
+    ) -> Tuple[List, List]:
+        """
+        Normalize point prompts for a single image into the nested structure
+        expected by ``Sam3TrackerProcessor``.
+
+        Accepted point formats:
+        - ``[[x, y], [x, y]]``
+        - ``[[[x, y], [x, y]]]``
+        - ``[[[[x, y], [x, y]]]]``
+
+        Accepted label formats:
+        - ``[1, 0]``
+        - ``[[1, 0]]``
+        - ``[[[1, 0]]]``
+        """
+        if not input_points:
+            raise ValueError("input_points must contain at least one point")
+        if not input_labels:
+            raise ValueError("input_labels must contain at least one label")
+
+        if isinstance(input_points[0][0], (int, float)):
+            normalized_points = [[input_points]]
+        elif isinstance(input_points[0][0][0], (int, float)):
+            normalized_points = [input_points]
+        else:
+            normalized_points = input_points
+
+        if isinstance(input_labels[0], int):
+            normalized_labels = [[input_labels]]
+        elif isinstance(input_labels[0][0], int):
+            normalized_labels = [input_labels]
+        else:
+            normalized_labels = input_labels
+
+        num_points = len(normalized_points[0][0])
+        num_labels = len(normalized_labels[0][0])
+        if num_points != num_labels:
+            raise ValueError(
+                f"Number of points ({num_points}) must match number of labels ({num_labels})"
+            )
+
+        return normalized_points, normalized_labels
 
     @torch.inference_mode()
     def text_batch_infer(
@@ -172,6 +246,74 @@ class SAM3Inference:
             all_results.extend(batch_results)
 
         return all_results
+
+    @torch.inference_mode()
+    def point_prompt_infer_single(
+        self,
+        image: Union[np.ndarray, Image.Image],
+        input_points: List,
+        input_labels: List
+    ) -> Dict[str, np.ndarray]:
+        """
+        Run single-image mask refinement using positive/negative point prompts.
+
+        Label semantics:
+        - ``1``: positive point
+        - ``0``: negative point
+
+        Args:
+            image: Input image as a numpy array or PIL image.
+            input_points: Point coordinates for one image. Supports simplified
+                formats like ``[[x, y], [x, y]]`` and the fully nested
+                processor format ``[[[[x, y], [x, y]]]]``.
+            input_labels: Point labels aligned with ``input_points``. Supports
+                ``[1, 0]`` as well as nested processor-compatible forms.
+
+        Returns:
+            Dict containing:
+            - ``masks``: Post-processed masks in original image resolution.
+            - ``scores``: Predicted mask quality / IoU scores when available.
+        """
+        normalized_image = self._normalize_images([image])[0]
+        normalized_points, normalized_labels = self._normalize_point_inputs(
+            input_points=input_points,
+            input_labels=input_labels
+        )
+        self._load_tracker_components()
+
+        inputs = self.tracker_processor(
+            images=normalized_image,
+            input_points=normalized_points,
+            input_labels=normalized_labels,
+            return_tensors="pt"
+        ).to(self.device)
+
+        if self.use_fp16:
+            inputs = {
+                k: v.half() if v.dtype == torch.float32 else v
+                for k, v in inputs.items()
+            }
+
+        outputs = self.tracker_model(**inputs)
+
+        masks = self.tracker_processor.post_process_masks(
+            outputs.pred_masks.detach().cpu(),
+            inputs["original_sizes"].detach().cpu()
+        )[0]
+
+        if isinstance(masks, torch.Tensor):
+            masks = masks.numpy()
+        else:
+            masks = np.asarray(masks)
+
+        scores = np.array([])
+        if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
+            scores = outputs.iou_scores.detach().cpu().numpy()[0]
+
+        return {
+            "masks": masks,
+            "scores": scores
+        }
 
     def infer_single(
         self,
@@ -518,7 +660,7 @@ def interactive_mode(
 
 
 def main():
-    """Main entry point for SAM3 batch inference."""
+    """Main entry point for SAM3 inference."""
     parser = argparse.ArgumentParser(
         description="SAM3 Interactive Batch Inference - Load model once, run multiple inferences",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -614,30 +756,60 @@ Examples:
         )
         
         # Run initial batch inference
-        image_paths, loaded_images, results = batch_infer_directory(
-            inference_engine=inference_engine,
-            image_dir=args.image_dir,
-            prompt=args.prompt,
-            output_dir=args.output_dir,
-            batch_size=args.batch_size,
-            threshold=args.threshold,
-            mask_threshold=args.mask_threshold,
-            model_id=args.model_id
+        # image_paths, loaded_images, results = batch_infer_directory(
+        #     inference_engine=inference_engine,
+        #     image_dir=args.image_dir,
+        #     prompt=args.prompt,
+        #     output_dir=args.output_dir,
+        #     batch_size=args.batch_size,
+        #     threshold=args.threshold,
+        #     mask_threshold=args.mask_threshold,
+        #     model_id=args.model_id
+        # )
+
+        output_path = Path(args.output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        test_image_path = Path("./images/IMG_7578.HEIC")
+        test_points = [
+            [512, 1054],
+            [595, 1566],
+            [693, 2062],
+            [746, 2507],
+            [806, 2898],
+        ]
+        test_labels = [1, 1, 1, 1, 1]
+
+        print("\n" + "="*60)
+        print("Running point prompt test")
+        print("="*60)
+        print(f"Image: {test_image_path}")
+        print(f"Points: {test_points}")
+        print(f"Labels: {test_labels}")
+
+        if not test_image_path.exists():
+            raise FileNotFoundError(f"Test image not found: {test_image_path}")
+
+        with Image.open(test_image_path) as image:
+            test_image = image.convert("RGB")
+
+        start_time = time.time()
+        point_result = inference_engine.point_prompt_infer_single(
+            image=test_image,
+            input_points=test_points,
+            input_labels=test_labels
         )
-        
-        # # We will develop interactive mode in the next step, so we will comment it out for now. The batch inference will still run and save results, but the interactive loop will be disabled until we implement it.
-        # # Enter interactive mode if batch processing succeeded and not disabled
-        # if loaded_images and not args.no_interactive:
-        #     interactive_mode(
-        #         inference_engine=inference_engine,
-        #         image_paths=image_paths,
-        #         loaded_images=loaded_images,
-        #         output_dir=args.output_dir,
-        #         batch_size=args.batch_size,
-        #         threshold=args.threshold,
-        #         mask_threshold=args.mask_threshold,
-        #         model_id=args.model_id
-        #     )
+        total_time = time.time() - start_time
+
+        masks = point_result["masks"]
+        scores = point_result["scores"]
+        output_file = output_path / f"{test_image_path.stem}_point_prompt_test.npz"
+        np.savez_compressed(output_file, masks=masks, scores=scores)
+
+        print(f"Saved point prompt result: {output_file}")
+        print(f"Masks shape: {masks.shape}")
+        print(f"Scores: {scores}")
+        print(f"Processing time: {total_time:.2f}s")
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")
