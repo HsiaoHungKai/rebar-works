@@ -90,7 +90,7 @@ class SAM3Inference:
         return pil_images
 
     @torch.inference_mode()
-    def infer(
+    def text_batch_infer(
         self,
         images: Union[np.ndarray, List[np.ndarray], Image.Image, List[Image.Image]],
         text_prompts: Union[str, List[str]],
@@ -186,7 +186,7 @@ class SAM3Inference:
         Returns:
             List containing [masks, boxes, scores] as numpy arrays
         """
-        results = self.infer(
+        results = self.text_batch_infer(
             images=[image],
             text_prompts=[text_prompt],
             batch_size=1,
@@ -364,7 +364,7 @@ def batch_infer_directory(
     start_time = time.time()
     
     try:
-        results = inference_engine.infer(
+        results = inference_engine.text_batch_infer(
             images=loaded_images,
             text_prompts=prompt,
             batch_size=batch_size,
@@ -467,7 +467,7 @@ def interactive_mode(
             start_time = time.time()
             
             try:
-                results = inference_engine.infer(
+                results = inference_engine.text_batch_infer(
                     images=loaded_images,
                     text_prompts=user_input,
                     batch_size=batch_size,
