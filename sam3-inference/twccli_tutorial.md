@@ -89,14 +89,13 @@ For a clearer guide with UI screenshots and the full key-pair workflow, see:
 
 - https://man.twcc.ai/@twccdocs/guide-vcs-keypair-zh
 
-Replace these placeholders before running commands:
+<!-- Replace these placeholders before running commands:
 
-- `<CURRENT_DIR>`: local working directory
 - `<SITE_ID>`: your TWCC site ID
 - `<PEM_LOCATION>`: path to your PEM file
 - `<PORT>`: SSH port shown by `twccli ls ccs`
 - `<IP_ADDRESS>`: container IP shown by `twccli ls ccs`
-- `HF_TOKEN`: an example environment variable for scripts that need a Hugging Face token
+- `HF_TOKEN`: an example environment variable for scripts that need a Hugging Face token -->
 
 ## 1. Create a TWCC Container
 
@@ -125,14 +124,14 @@ After `twccli mk ccs` finishes, TWCC shows the site ID in the output table. For 
 
 ```text
 Passing current credential information to new computing resources.
-+ CCS Site:5873097 ---------+--------+
-| id      | name            | status |
-+---------+-----------------+--------+
-| 5873097 | twccli-tutorial | Ready  |
-+---------+-----------------+--------+
++ CCS Site:<SITE_ID> ---------+--------+
+| id        | name            | status |
++-----------+-----------------+--------+
+| <SITE_ID> | twccli-tutorial | Ready  |
++-----------+-----------------+--------+
 ```
 
-In this example, the site ID is `5873097`.
+In this example, `<SITE_ID>` is the site ID you will use in later commands.
 
 You can also check currently running CCS resources with:
 
@@ -148,6 +147,17 @@ List the container details and note the IP address and SSH port:
 twccli ls ccs -s <SITE_ID> -gssh -table
 ```
 
+For example:
+
+```text
+<TWCC_USERNAME>@<TWCC_HOST> -p <PORT>
+```
+
+In this example:
+
+- `<TWCC_USERNAME>@<TWCC_HOST>` is the SSH login target
+- `<PORT>` is the SSH port
+
 If needed, fix your key permissions once:
 
 ```bash
@@ -159,13 +169,13 @@ chmod 400 <PEM_LOCATION>
 Upload your Python script from your local machine to the TWCC container:
 
 ```bash
-scp -i <PEM_LOCATION> -P <PORT> script.py u7740467@<IP_ADDRESS>:~/
+scp -i <PEM_LOCATION> -P <PORT> script.py <TWCC_USERNAME>@<IP_ADDRESS>:~/
 ```
 
 Then connect to the container:
 
 ```bash
-ssh -p <PORT> u7740467@<IP_ADDRESS>
+ssh -p <PORT> <TWCC_USERNAME>@<IP_ADDRESS>
 ```
 
 ## 4. Prepare the Remote Environment
@@ -179,7 +189,7 @@ bash miniconda.sh -b -p $HOME/miniconda3
 $HOME/miniconda3/bin/conda init bash
 source ~/.bashrc
 
-pip install transformers Pillow requests
+pip install <REQUIRED_PYTHON_PACKAGES>
 ```
 
 This installs Miniconda, initializes Conda for the shell, and installs example Python packages you may need. Adjust the package list for your own script.
@@ -198,8 +208,6 @@ If your script depends on secrets such as `HF_TOKEN`, export them before running
 export HF_TOKEN="HF_TOKEN"
 python script.py
 ```
-
-The original notes mention an NVIDIA driver warning caused by a driver and PyTorch mismatch. The example script still ran successfully, so this warning does not necessarily block execution. If GPU performance becomes an issue, use a container image with a more compatible software stack.
 
 ## 6. Clean Up the Container
 
