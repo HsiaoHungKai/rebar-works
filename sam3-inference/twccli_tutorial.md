@@ -7,10 +7,11 @@ This tutorial walks through a basic `twccli` workflow for creating a TWCC contai
 Before you start, make sure you have:
 
 - `twccli` installed and authenticated on your local machine
-- a valid TWCC site ID
 - a PEM key file for SSH access
 - a Python script you want to test, for example `script.py`
 - any credentials or API tokens your script requires
+
+The following sections walk through how to get or prepare these prerequisites before creating the container.
 
 ### Install `twccli`
 
@@ -89,14 +90,6 @@ For a clearer guide with UI screenshots and the full key-pair workflow, see:
 
 - https://man.twcc.ai/@twccdocs/guide-vcs-keypair-zh
 
-<!-- Replace these placeholders before running commands:
-
-- `<SITE_ID>`: your TWCC site ID
-- `<PEM_LOCATION>`: path to your PEM file
-- `<PORT>`: SSH port shown by `twccli ls ccs`
-- `<IP_ADDRESS>`: container IP shown by `twccli ls ccs`
-- `HF_TOKEN`: an example environment variable for scripts that need a Hugging Face token -->
-
 ## 1. Create a TWCC Container
 
 Run these commands on your local machine:
@@ -141,13 +134,13 @@ twccli ls ccs
 
 ## 2. Get Connection Information
 
-List the container details and note the IP address and SSH port:
+List the container details and note the TWCC host and SSH port:
 
 ```bash
 twccli ls ccs -s <SITE_ID> -gssh -table
 ```
 
-For example:
+Command output:
 
 ```text
 <TWCC_USERNAME>@<TWCC_HOST> -p <PORT>
@@ -169,13 +162,13 @@ chmod 400 <PEM_LOCATION>
 Upload your Python script from your local machine to the TWCC container:
 
 ```bash
-scp -i <PEM_LOCATION> -P <PORT> script.py <TWCC_USERNAME>@<IP_ADDRESS>:~/
+scp -i <PEM_LOCATION> -P <PORT> script.py <TWCC_USERNAME>@<TWCC_HOST>:~/
 ```
 
 Then connect to the container:
 
 ```bash
-ssh -p <PORT> <TWCC_USERNAME>@<IP_ADDRESS>
+ssh -p <PORT> <TWCC_USERNAME>@<TWCC_HOST>
 ```
 
 ## 4. Prepare the Remote Environment
@@ -222,7 +215,7 @@ twccli rm ccs --site-id <SITE_ID> --force
 The end-to-end flow is:
 
 1. Create a container with `twccli mk ccs`
-2. Get the IP and port with `twccli ls ccs`
+2. Get the TWCC host and port with `twccli ls ccs -s <SITE_ID> -gssh -table`
 3. Upload `script.py` with `scp`
 4. Connect with `ssh`
 5. Install dependencies inside the container
