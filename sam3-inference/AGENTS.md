@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`sam3_inference.py` is the main entrypoint and contains model loading, batch image discovery, and JSON/NPZ result serialization. `run_sam3_on_twcc.sh` automates remote execution on TWCC, including upload, container setup, and result download. `images/` holds local input images, `results/` stores downloaded or local inference outputs, and `visualize.ipynb` is for ad hoc inspection. Treat `twcc_command.md` as operator notes, not executable source.
+`sam3_inference.py` is the main entrypoint and contains model loading, batch image discovery, and JSON/NPZ result serialization. `run_sam3_on_twcc.sh` automates remote execution on TWCC, while `twccli_tutorial.md` is the student-facing TWCC CLI walkthrough and should stay generic, instructional, and free of personal or account-specific information. `images/` holds local input images, `results/` stores downloaded or local inference outputs, and `visualize.ipynb` is for ad hoc inspection.
 
 ## Build, Test, and Development Commands
 Create a local environment, then install dependencies:
@@ -34,4 +34,4 @@ There is no automated test suite yet. For Python changes, run a representative C
 Recent history uses Conventional Commit prefixes such as `feat:` and `refactor:`. Continue that format with short, imperative summaries, for example `fix: handle empty image directory`. PRs should describe the scenario tested, note any TWCC or Hugging Face assumptions, and include sample output paths or screenshots when notebook or result-format changes affect review.
 
 ## Security & Configuration Tips
-Do not commit `.env`, tokens, PEM paths, or downloaded secrets. Keep large inference artifacts out of Git unless they are intentionally curated examples.
+Do not commit `.env`, tokens, PEM paths, downloaded secrets, or any personal TWCC identifiers such as usernames, hosts, site IDs, or ports. Keep documentation examples sanitized with placeholders. Keep large inference artifacts out of Git unless they are intentionally curated examples.
