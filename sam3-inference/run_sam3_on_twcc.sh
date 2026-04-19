@@ -79,6 +79,7 @@ orchestrator_mode() {
     [[ -n "${HF_TOKEN:-}" ]] || fail "HF_TOKEN not found in .env"
     [[ -n "${PEM_LOCATION:-}" ]] || fail "PEM_LOCATION not found in .env"
     [[ -n "${TWCC_PASSWORD:-}" ]] || fail "TWCC_PASSWORD not found in .env"
+    [[ -n "${TWCC_USERNAME:-}" ]] || fail "TWCC_USERNAME not found in .env. Find your username from NCHC iService: https://iservice.nchc.org.tw/nchc_service/ (會員中心 -> 主機帳號資訊)"
     
     log "Environment variables loaded from .env"
     log "HF_TOKEN: ${HF_TOKEN:0:10}..."
@@ -131,7 +132,7 @@ execution_mode() {
     log "==================================================================="
     
     # Source .env file if variables are not already set
-    if [[ -z "${HF_TOKEN:-}" || -z "${PEM_LOCATION:-}" || -z "${TWCC_PASSWORD:-}" ]]; then
+    if [[ -z "${HF_TOKEN:-}" || -z "${PEM_LOCATION:-}" || -z "${TWCC_PASSWORD:-}" || -z "${TWCC_USERNAME:-}" ]]; then
         log "Loading environment variables from .env"
         [[ -f "$ENV_FILE" ]] || fail ".env file not found at ${ENV_FILE}"
         # shellcheck disable=SC1090
@@ -142,6 +143,7 @@ execution_mode() {
     [[ -n "${HF_TOKEN:-}" ]] || fail "HF_TOKEN not set in .env"
     [[ -n "${PEM_LOCATION:-}" ]] || fail "PEM_LOCATION not set in .env"
     [[ -n "${TWCC_PASSWORD:-}" ]] || fail "TWCC_PASSWORD not set in .env"
+    [[ -n "${TWCC_USERNAME:-}" ]] || fail "TWCC_USERNAME not set in .env. Find your username from NCHC iService: https://iservice.nchc.org.tw/nchc_service/ (會員中心 -> 主機帳號資訊)"
     
     log "Environment variables loaded successfully"
     
@@ -307,11 +309,11 @@ execution_mode() {
     cat "$TEMP_INFO"
     set +x
     
-    # Parse IP and PORT from -gssh output
-    # Expected format: ssh user@IP_ADDRESS -p PORT or similar
+    # Parse IP and port from -gssh output.
+    # Expected format: ssh user@IP_ADDRESS -p PORT or similar.
     log "Parsing SSH connection details from -gssh output..."
-    
-    # Extract IP address from user@IP format
+
+    # Extract IP address from user@host format
     if grep -q "@" "$TEMP_INFO"; then
         IP_ADDRESS=$(grep "@" "$TEMP_INFO" | grep -v "User" | head -n 1 | sed -E 's/.*@([^ ]+).*/\1/')
         log "Extracted IP from user@host format: $IP_ADDRESS"
@@ -341,6 +343,7 @@ execution_mode() {
     set +x
     log "Container Info:"
     log "  SITE_ID: $SITE_ID"
+    log "  SSH User: ${TWCC_USERNAME}"
     log "  IP: $IP_ADDRESS"
     log "  PORT: $PORT"
     set -x
@@ -348,6 +351,8 @@ execution_mode() {
     [[ -n "$SITE_ID" ]] || fail "Failed to extract SITE_ID"
     [[ -n "$IP_ADDRESS" ]] || fail "Failed to extract IP_ADDRESS"
     [[ -n "$PORT" ]] || fail "Failed to extract PORT"
+
+    REMOTE_TARGET="${TWCC_USERNAME}@${IP_ADDRESS}"
     
     # Step 4: Set SSH key permissions
     set +x
@@ -375,7 +380,7 @@ execution_mode() {
         -p "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "u7740467@${IP_ADDRESS}" \
+        "$REMOTE_TARGET" \
         "mkdir -p /tmp/sam3"
     log "Directory /tmp/sam3 created successfully"
     
@@ -386,7 +391,7 @@ execution_mode() {
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        sam3_inference.py requirements.txt "u7740467@${IP_ADDRESS}:/tmp/sam3/"
+        sam3_inference.py requirements.txt "${REMOTE_TARGET}:/tmp/sam3/"
     
     # Upload images directory if it exists
     if [ -d "./images" ]; then
@@ -398,7 +403,7 @@ execution_mode() {
             -p "$PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
+            "$REMOTE_TARGET" \
             "mkdir -p /tmp/sam3/images"
         
         # Upload all files from ./images to /tmp/sam3/images
@@ -407,7 +412,7 @@ execution_mode() {
             -P "$PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            -r ./images/* "u7740467@${IP_ADDRESS}:/tmp/sam3/images/"
+            -r ./images/* "${REMOTE_TARGET}:/tmp/sam3/images/"
         
         # Validate files were uploaded to remote server
         FILE_COUNT=$(retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" ssh \
@@ -415,7 +420,7 @@ execution_mode() {
             -p "$PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            "u7740467@${IP_ADDRESS}" \
+            "$REMOTE_TARGET" \
             "ls /tmp/sam3/images 2>/dev/null | wc -l")
         
         if [ "$FILE_COUNT" -gt 0 ]; then
@@ -466,7 +471,7 @@ REMOTE_EOF
         -p "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "u7740467@${IP_ADDRESS}" \
+        "$REMOTE_TARGET" \
         "$REMOTE_SCRIPT"
     
     set +x
@@ -486,7 +491,7 @@ REMOTE_EOF
         -P "$PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "u7740467@${IP_ADDRESS}:/tmp/sam3/results/*" \
+        "${REMOTE_TARGET}:/tmp/sam3/results/*" \
         ./results/
     
     set +x
