@@ -253,7 +253,10 @@ class SAM3Inference:
         input_points: List,
         input_labels: List,
         image: Optional[Union[np.ndarray, Image.Image]] = None,
-        image_path: Optional[Union[str, Path]] = None
+        image_path: Optional[Union[str, Path]] = None,
+        output_dir: Optional[Union[str, Path]] = None,
+        threshold: Optional[float] = None,
+        mask_threshold: Optional[float] = None
     ) -> List[List[np.ndarray]]:
         """
         Run single-image mask refinement using positive/negative point prompts.
@@ -265,6 +268,9 @@ class SAM3Inference:
         Args:
             image: Input image as a numpy array or PIL image.
             image_path: Optional path to the input image file.
+            output_dir: Optional directory for saving JSON/NPZ outputs.
+            threshold: Optional score threshold metadata for saved results.
+            mask_threshold: Optional mask threshold metadata for saved results.
             input_points: Point coordinates for one image. Supports simplified
                 formats like ``[[x, y], [x, y]]`` and the fully nested
                 processor format ``[[[[x, y], [x, y]]]]``.
@@ -279,56 +285,87 @@ class SAM3Inference:
               not produce box outputs in this path.
             - ``scores``: Predicted mask quality / IoU scores when available.
         """
-        if image is None:
-            if image_path is None:
-                raise ValueError("Provide either image or image_path.")
+        empty_result = [[np.array([], dtype=np.uint8), np.array([]), np.array([])]]
+        start_time = time.time()
 
-            image_path = Path(image_path)
-            if not image_path.exists():
-                raise FileNotFoundError(f"Test image not found: {image_path}")
+        try:
+            normalized_image_path: Optional[Path] = None
+            if image is None:
+                if image_path is None:
+                    raise ValueError("Provide either image or image_path.")
 
-            image = Image.open(image_path).convert("RGB")
-        else:
-            image = self._normalize_images([image])[0]
-        
-        normalized_points, normalized_labels = self._normalize_point_inputs(
-            input_points=input_points,
-            input_labels=input_labels
-        )
+                normalized_image_path = Path(image_path)
+                if not normalized_image_path.exists():
+                    raise FileNotFoundError(f"Test image not found: {normalized_image_path}")
 
-        self._load_tracker_components()
+                image = Image.open(normalized_image_path).convert("RGB")
+            else:
+                image = self._normalize_images([image])[0]
+                if image_path is not None:
+                    normalized_image_path = Path(image_path)
 
-        inputs = self.tracker_processor(
-            images=image, 
-            input_points=normalized_points, 
-            input_labels=normalized_labels, 
-            return_tensors="pt"
-        ).to(self.device)
+            normalized_points, normalized_labels = self._normalize_point_inputs(
+                input_points=input_points,
+                input_labels=input_labels
+            )
 
-        if self.use_fp16:
-            inputs = {
-                k: v.half() if v.dtype == torch.float32 else v
-                for k, v in inputs.items()
-            }
+            self._load_tracker_components()
 
-        outputs = self.tracker_model(**inputs)
+            inputs = self.tracker_processor(
+                images=image,
+                input_points=normalized_points,
+                input_labels=normalized_labels,
+                return_tensors="pt"
+            ).to(self.device)
 
-        masks = self.tracker_processor.post_process_masks(
-            outputs.pred_masks.detach().cpu(),
-            inputs["original_sizes"].detach().cpu()
-        )[0]
+            if self.use_fp16:
+                inputs = {
+                    k: v.half() if v.dtype == torch.float32 else v
+                    for k, v in inputs.items()
+                }
 
-        if isinstance(masks, torch.Tensor):
-            masks = masks.numpy()
-        else:
-            masks = np.asarray(masks)
-        masks = (masks > 0).astype(np.uint8)
+            outputs = self.tracker_model(**inputs)
 
-        scores = np.array([])
-        if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
-            scores = outputs.iou_scores.detach().cpu().numpy()[0]
+            masks = self.tracker_processor.post_process_masks(
+                outputs.pred_masks.detach().cpu(),
+                inputs["original_sizes"].detach().cpu()
+            )[0]
 
-        return [[masks, np.array([]), scores]]
+            if isinstance(masks, torch.Tensor):
+                masks = masks.numpy()
+            else:
+                masks = np.asarray(masks)
+            masks = (masks > 0).astype(np.uint8)
+
+            scores = np.array([])
+            if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
+                scores = outputs.iou_scores.detach().cpu().numpy()[0]
+
+            result = [[masks, np.array([]), scores]]
+            processing_time = time.time() - start_time
+
+            if normalized_image_path is not None and output_dir is not None:
+                output_path = save_result(
+                    result=result[0],
+                    image_path=normalized_image_path,
+                    prompt=None,
+                    output_dir=Path(output_dir),
+                    model_id=self.model_id,
+                    threshold=threshold,
+                    mask_threshold=mask_threshold,
+                    processing_time=processing_time,
+                    prompt_type="point_prompt",
+                    input_points=input_points,
+                    input_labels=input_labels,
+                    output_label="point_prompt_test"
+                )
+                print(f"Saved point prompt result: {output_path.with_suffix('.npz')}")
+
+            print(f"Point prompt processing time: {processing_time:.2f}s")
+            return result
+        except Exception as e:
+            print(f"Point prompt inference failed: {e}")
+            return empty_result
 
     def infer_single(
         self,
@@ -398,12 +435,16 @@ def get_image_files(directory: str) -> List[Path]:
 def save_result(
     result: List[np.ndarray],
     image_path: Path,
-    prompt: str,
+    prompt: Optional[str],
     output_dir: Path,
     model_id: str,
-    threshold: float,
-    mask_threshold: float,
-    processing_time: float
+    threshold: Optional[float],
+    mask_threshold: Optional[float],
+    processing_time: float,
+    prompt_type: str = "text",
+    input_points: Optional[List] = None,
+    input_labels: Optional[List] = None,
+    output_label: Optional[str] = None
 ) -> Path:
     """
     Save inference result to JSON (metadata) and NPZ (numpy arrays) files.
@@ -414,7 +455,14 @@ def save_result(
     Returns:
         Path to the JSON file (metadata with reference to NPZ file)
     """
-    prompt_slug = sanitize_prompt(prompt)
+    if output_label is not None:
+        prompt_slug = sanitize_prompt(output_label)
+    elif prompt is not None:
+        prompt_slug = sanitize_prompt(prompt)
+    else:
+        prompt_slug = sanitize_prompt(prompt_type)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
     output_filename = f"{image_path.stem}_{prompt_slug}.json"
     output_path = output_dir / output_filename
     
@@ -431,20 +479,29 @@ def save_result(
     np.savez_compressed(npz_path, masks=masks, boxes=boxes, scores=scores)
     
     # Save metadata to JSON with reference to NPZ file
-    json_data = {
-        'metadata': {
-            'image_filename': image_path.name,
-            'image_path': str(image_path),
-            'text_prompt': prompt,
-            'model_id': model_id,
-            'threshold': threshold,
-            'mask_threshold': mask_threshold,
-            'timestamp': datetime.now().isoformat(),
-            'processing_time_seconds': round(processing_time, 3),
-            'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0,
-            'npz_filename': npz_filename,
-        }
+    metadata: Dict[str, Union[str, float, int, List]] = {
+        'prompt_type': prompt_type,
+        'image_filename': image_path.name,
+        'image_path': str(image_path),
+        'model_id': model_id,
+        'timestamp': datetime.now().isoformat(),
+        'processing_time_seconds': round(processing_time, 3),
+        'num_objects_detected': len(scores) if isinstance(scores, np.ndarray) else 0,
+        'npz_filename': npz_filename,
     }
+
+    if threshold is not None:
+        metadata['threshold'] = threshold
+    if mask_threshold is not None:
+        metadata['mask_threshold'] = mask_threshold
+
+    if prompt_type == "text":
+        metadata['text_prompt'] = prompt or ""
+    elif prompt_type == "point_prompt":
+        metadata['input_points'] = input_points or []
+        metadata['input_labels'] = input_labels or []
+
+    json_data = {'metadata': metadata}
     
     with open(output_path, 'w') as f:
         json.dump(json_data, f, indent=2)
@@ -801,27 +858,19 @@ Examples:
         print(f"Points: {test_points}")
         print(f"Labels: {test_labels}")
 
-        if not test_image_path.exists():
-            raise FileNotFoundError(f"Test image not found: {test_image_path}")
-
-        start_time = time.time()
         point_result = inference_engine.point_prompt_infer_single(
             image_path=test_image_path,
             input_points=test_points,
-            input_labels=test_labels
+            input_labels=test_labels,
+            output_dir=output_path,
+            threshold=args.threshold,
+            mask_threshold=args.mask_threshold
         )
-        total_time = time.time() - start_time
 
         masks = point_result[0][0]
-        boxes = point_result[0][1]
         scores = point_result[0][2]
-        output_file = output_path / f"{test_image_path.stem}_point_prompt_test.npz"
-        np.savez_compressed(output_file, masks=masks, boxes=boxes, scores=scores)
-
-        print(f"Saved point prompt result: {output_file}")
         print(f"Masks shape: {masks.shape}")
         print(f"Scores: {scores}")
-        print(f"Processing time: {total_time:.2f}s")
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")
