@@ -250,9 +250,10 @@ class SAM3Inference:
     @torch.inference_mode()
     def point_prompt_infer_single(
         self,
-        image_path: str,
         input_points: List,
-        input_labels: List
+        input_labels: List,
+        image: Optional[Union[np.ndarray, Image.Image]] = None,
+        image_path: Optional[Union[str, Path]] = None
     ) -> List[List[np.ndarray]]:
         """
         Run single-image mask refinement using positive/negative point prompts.
@@ -262,7 +263,8 @@ class SAM3Inference:
         - ``0``: negative point
 
         Args:
-            image: Path to the input image file.
+            image: Input image as a numpy array or PIL image.
+            image_path: Optional path to the input image file.
             input_points: Point coordinates for one image. Supports simplified
                 formats like ``[[x, y], [x, y]]`` and the fully nested
                 processor format ``[[[[x, y], [x, y]]]]``.
@@ -277,21 +279,29 @@ class SAM3Inference:
               not produce box outputs in this path.
             - ``scores``: Predicted mask quality / IoU scores when available.
         """
-        if not image_path.exists():
-            raise FileNotFoundError(f"Test image not found: {image_path}")
+        if image is None:
+            if image_path is None:
+                raise ValueError("Provide either image or image_path.")
 
-        image = Image.open(image_path).convert("RGB")
+            image_path = Path(image_path)
+            if not image_path.exists():
+                raise FileNotFoundError(f"Test image not found: {image_path}")
+
+            image = Image.open(image_path).convert("RGB")
+        else:
+            image = self._normalize_images([image])[0]
         
         normalized_points, normalized_labels = self._normalize_point_inputs(
             input_points=input_points,
             input_labels=input_labels
         )
+
         self._load_tracker_components()
 
         inputs = self.tracker_processor(
-            images=image,
-            input_points=normalized_points,
-            input_labels=normalized_labels,
+            images=image, 
+            input_points=normalized_points, 
+            input_labels=normalized_labels, 
             return_tensors="pt"
         ).to(self.device)
 
@@ -301,18 +311,18 @@ class SAM3Inference:
                 for k, v in inputs.items()
             }
 
-        with torch.no_grad():
-            outputs = self.tracker_model(**inputs)
+        outputs = self.tracker_model(**inputs)
 
         masks = self.tracker_processor.post_process_masks(
             outputs.pred_masks.detach().cpu(),
-            inputs["original_sizes"]
+            inputs["original_sizes"].detach().cpu()
         )[0]
 
         if isinstance(masks, torch.Tensor):
-            masks = masks.cpu().numpy().astype(np.uint8)
+            masks = masks.numpy()
         else:
             masks = np.asarray(masks)
+        masks = (masks > 0).astype(np.uint8)
 
         scores = np.array([])
         if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
@@ -775,10 +785,12 @@ Examples:
         output_path = Path(args.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        test_image_path = Path("./images/IMG_7566.HEIC")
+        test_image_path = Path("./images/IMG_7578.HEIC")
         test_points = [
-            [1809,
-            1542]
+            [
+                1094,
+                1021
+            ]
         ]
         test_labels = [1]
 
@@ -792,11 +804,9 @@ Examples:
         if not test_image_path.exists():
             raise FileNotFoundError(f"Test image not found: {test_image_path}")
 
-        test_image = Image.open(test_image_path).convert("RGB")
-
         start_time = time.time()
         point_result = inference_engine.point_prompt_infer_single(
-            image=test_image,
+            image_path=test_image_path,
             input_points=test_points,
             input_labels=test_labels
         )
