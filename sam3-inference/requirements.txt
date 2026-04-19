@@ -1,5 +1,6 @@
-torch
-torchvision
-transformers
+torch==2.10.0
+torchvision --index-url https://download.pytorch.org/whl/cu128
+git+https://github.com/huggingface/transformers
 Pillow
+pillow-heif
 requests
