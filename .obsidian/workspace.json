@@ -11,14 +11,10 @@
             "id": "6da7c41c1beab5e0",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "sam3-inference/twccli_tutorial.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "twccli_tutorial"
+              "title": "New tab"
             }
           }
         ]
@@ -94,7 +90,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "sam3-inference/twccli_tutorial.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +99,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for twccli_tutorial"
+              "title": "Backlinks"
             }
           },
           {
@@ -113,12 +108,11 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "sam3-inference/twccli_tutorial.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from twccli_tutorial"
+              "title": "Outgoing links"
             }
           },
           {
@@ -156,13 +150,12 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "sam3-inference/twccli_tutorial.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of twccli_tutorial"
+              "title": "Outline"
             }
           }
         ]
@@ -185,18 +178,19 @@
   },
   "active": "6da7c41c1beab5e0",
   "lastOpenFiles": [
+    "sam3-inference/twccli_tutorial.md",
+    "sam3-inference/run_sam3_on_twcc.sh",
+    "sam3-inference/AGENTS.md",
+    "rebar-works/Welcome.md",
+    "paper-works/2026_ICIP_Rebar.tex",
+    "sam3-inference/twcc_command.md",
+    "sam3-inference/sam3_results.json",
+    "sam3-inference/sam3_inference.sh",
+    "depth-models",
     "sam3-inference/results/IMG_7578_point_prompt_test.json",
     "sam3-inference/results/IMG_7566_point_prompt_test.npz",
     "sam3-inference/results/IMG_7578_point_prompt_test.npz",
     "sam3-inference/results/IMG_7578_point_prompt_test 2.npz",
-    "sam3-inference/results/IMG_7616_rebar.npz",
-    "sam3-inference/results/IMG_7616_rebar.json",
-    "sam3-inference/results/IMG_7578_rebar.npz",
-    "sam3-inference/results/IMG_7578_rebar.json",
-    "sam3-inference/results/IMG_7566_rebar.npz",
-    "sam3-inference/results/IMG_7566_rebar.json",
-    "sam3-inference/results",
-    "sam3-inference/twcc_command.md",
-    "sam3-inference/twccli_tutorial.md"
+    "sam3-inference/results/IMG_7616_rebar.npz"
   ]
 }
