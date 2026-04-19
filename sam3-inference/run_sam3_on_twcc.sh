@@ -485,6 +485,9 @@ REMOTE_EOF
     log "==================================================================="
     set -x
 
+    log "Preparing local results directory..."
+    mkdir -p ./results
+
     # Download the files in /tmp/sam3/results from remote container
     retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp -r \
         -i "$PEM_LOCATION" \
