@@ -250,10 +250,10 @@ class SAM3Inference:
     @torch.inference_mode()
     def point_prompt_infer_single(
         self,
-        image: Union[np.ndarray, Image.Image],
+        image_path: str,
         input_points: List,
         input_labels: List
-    ) -> Dict[str, np.ndarray]:
+    ) -> List[List[np.ndarray]]:
         """
         Run single-image mask refinement using positive/negative point prompts.
 
@@ -262,7 +262,7 @@ class SAM3Inference:
         - ``0``: negative point
 
         Args:
-            image: Input image as a numpy array or PIL image.
+            image: Path to the input image file.
             input_points: Point coordinates for one image. Supports simplified
                 formats like ``[[x, y], [x, y]]`` and the fully nested
                 processor format ``[[[[x, y], [x, y]]]]``.
@@ -270,11 +270,18 @@ class SAM3Inference:
                 ``[1, 0]`` as well as nested processor-compatible forms.
 
         Returns:
-            Dict containing:
+            A single-item batch matching ``text_batch_infer()`` output format:
+            ``[[masks, boxes, scores]]`` where:
             - ``masks``: Post-processed masks in original image resolution.
+            - ``boxes``: Empty array placeholder, since point prompting does
+              not produce box outputs in this path.
             - ``scores``: Predicted mask quality / IoU scores when available.
         """
-        normalized_image = self._normalize_images([image])[0]
+        if not image_path.exists():
+            raise FileNotFoundError(f"Test image not found: {image_path}")
+
+        image = Image.open(image_path).convert("RGB")
+        
         normalized_points, normalized_labels = self._normalize_point_inputs(
             input_points=input_points,
             input_labels=input_labels
@@ -282,7 +289,7 @@ class SAM3Inference:
         self._load_tracker_components()
 
         inputs = self.tracker_processor(
-            images=normalized_image,
+            images=image,
             input_points=normalized_points,
             input_labels=normalized_labels,
             return_tensors="pt"
@@ -294,15 +301,16 @@ class SAM3Inference:
                 for k, v in inputs.items()
             }
 
-        outputs = self.tracker_model(**inputs)
+        with torch.no_grad():
+            outputs = self.tracker_model(**inputs)
 
         masks = self.tracker_processor.post_process_masks(
             outputs.pred_masks.detach().cpu(),
-            inputs["original_sizes"].detach().cpu()
+            inputs["original_sizes"]
         )[0]
 
         if isinstance(masks, torch.Tensor):
-            masks = masks.numpy()
+            masks = masks.cpu().numpy().astype(np.uint8)
         else:
             masks = np.asarray(masks)
 
@@ -310,10 +318,7 @@ class SAM3Inference:
         if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
             scores = outputs.iou_scores.detach().cpu().numpy()[0]
 
-        return {
-            "masks": masks,
-            "scores": scores
-        }
+        return [[masks, np.array([]), scores]]
 
     def infer_single(
         self,
@@ -770,15 +775,12 @@ Examples:
         output_path = Path(args.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        test_image_path = Path("./images/IMG_7578.HEIC")
+        test_image_path = Path("./images/IMG_7566.HEIC")
         test_points = [
-            [512, 1054],
-            [595, 1566],
-            [693, 2062],
-            [746, 2507],
-            [806, 2898],
+            [1809,
+            1542]
         ]
-        test_labels = [1, 1, 1, 1, 1]
+        test_labels = [1]
 
         print("\n" + "="*60)
         print("Running point prompt test")
@@ -790,8 +792,7 @@ Examples:
         if not test_image_path.exists():
             raise FileNotFoundError(f"Test image not found: {test_image_path}")
 
-        with Image.open(test_image_path) as image:
-            test_image = image.convert("RGB")
+        test_image = Image.open(test_image_path).convert("RGB")
 
         start_time = time.time()
         point_result = inference_engine.point_prompt_infer_single(
@@ -801,10 +802,11 @@ Examples:
         )
         total_time = time.time() - start_time
 
-        masks = point_result["masks"]
-        scores = point_result["scores"]
+        masks = point_result[0][0]
+        boxes = point_result[0][1]
+        scores = point_result[0][2]
         output_file = output_path / f"{test_image_path.stem}_point_prompt_test.npz"
-        np.savez_compressed(output_file, masks=masks, scores=scores)
+        np.savez_compressed(output_file, masks=masks, boxes=boxes, scores=scores)
 
         print(f"Saved point prompt result: {output_file}")
         print(f"Masks shape: {masks.shape}")
