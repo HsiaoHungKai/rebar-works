@@ -185,18 +185,19 @@
   },
   "active": "6da7c41c1beab5e0",
   "lastOpenFiles": [
-    "sam3-inference/results/IMG_7578_point_prompt_test.json",
-    "sam3-inference/results/IMG_7566_point_prompt_test.npz",
-    "sam3-inference/results/IMG_7578_point_prompt_test.npz",
-    "sam3-inference/results/IMG_7578_point_prompt_test 2.npz",
+    "rebar-works/Welcome.md",
+    "sam3-inference/twccli_tutorial.md",
     "sam3-inference/results/IMG_7616_rebar.npz",
     "sam3-inference/results/IMG_7616_rebar.json",
     "sam3-inference/results/IMG_7578_rebar.npz",
     "sam3-inference/results/IMG_7578_rebar.json",
+    "sam3-inference/results/IMG_7578_point_prompt_test.npz",
+    "sam3-inference/results/IMG_7578_point_prompt_test.json",
     "sam3-inference/results/IMG_7566_rebar.npz",
     "sam3-inference/results/IMG_7566_rebar.json",
+    "sam3-inference/results/IMG_7566_point_prompt_test.npz",
     "sam3-inference/results",
-    "sam3-inference/twcc_command.md",
-    "sam3-inference/twccli_tutorial.md"
+    "sam3-inference/AGENTS.md",
+    "sam3-inference/twcc_command.md"
   ]
 }
