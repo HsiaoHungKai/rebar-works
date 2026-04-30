@@ -357,7 +357,7 @@ class SAM3Inference:
                     prompt_type="point_prompt",
                     input_points=input_points,
                     input_labels=input_labels,
-                    output_label="point_prompt_test"
+                    output_label="point_prompt"
                 )
                 print(f"Saved point prompt result: {output_path.with_suffix('.npz')}")
 
@@ -430,6 +430,35 @@ def get_image_files(directory: str) -> List[Path]:
     ]
     
     return sorted(image_files)
+
+
+def parse_json_list_argument(raw_value: str, argument_name: str) -> List:
+    """Parse a CLI JSON argument and enforce a list payload."""
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{argument_name} must be valid JSON: {exc}") from exc
+
+    if not isinstance(parsed, list):
+        raise ValueError(f"{argument_name} must be a JSON list")
+
+    return parsed
+
+
+def normalize_point_cli_inputs(input_points: List, input_labels: List) -> Tuple[List, List]:
+    """Normalize point-prompt CLI payloads into model-compatible list forms."""
+    if (
+        len(input_points) == 2
+        and all(isinstance(value, (int, float)) for value in input_points)
+    ):
+        input_points = [input_points]
+
+    if not input_points:
+        raise ValueError("--input-points must contain at least one point")
+    if not input_labels:
+        raise ValueError("--input-labels must contain at least one label")
+
+    return input_points, input_labels
 
 
 def save_result(
@@ -606,7 +635,8 @@ def batch_infer_directory(
                 model_id=model_id,
                 threshold=threshold,
                 mask_threshold=mask_threshold,
-                processing_time=per_image_time
+                processing_time=per_image_time,
+                output_label="text_batch"
             )
             # result is now a list [masks, boxes, scores]
             num_objects = len(result[2]) if len(result) > 2 and isinstance(result[2], np.ndarray) else 0
@@ -738,29 +768,37 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with required arguments
+  # Text batch inference (default mode)
   python sam3_inference.py --image-dir ./images --prompt "dog ear"
-  
-  # Specify output directory
-  python sam3_inference.py --image-dir ./images --prompt "cat" --output-dir ./results
-  
-  # Adjust inference parameters
-  python sam3_inference.py --image-dir ./images --prompt "person" --threshold 0.7 --batch-size 8
+   
+  # Explicitly specify text mode
+  python sam3_inference.py --mode text-batch --image-dir ./images --prompt "cat"
+   
+  # Point prompt mode (single point and default positive label)
+  python sam3_inference.py --mode point-prompt --point-image ./images/IMG_7578.HEIC --input-points "[1094, 1021]"
         """
+    )
+
+    parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['text-batch', 'point-prompt'],
+        default='text-batch',
+        help='Inference mode (default: text-batch)'
     )
     
     parser.add_argument(
         '--image-dir',
         type=str,
-        required=True,
-        help='Directory containing images to process'
+        default=None,
+        help='Directory containing images to process (required for --mode text-batch)'
     )
     
     parser.add_argument(
         '--prompt',
         type=str,
-        required=True,
-        help='Initial text prompt for segmentation (e.g., "dog", "ear", "person")'
+        default=None,
+        help='Text prompt for segmentation (required for --mode text-batch)'
     )
     
     parser.add_argument(
@@ -807,14 +845,58 @@ Examples:
     parser.add_argument(
         '--no-interactive',
         action='store_true',
-        help='Exit after batch processing (do not enter interactive mode)'
+        help='Exit after batch processing (text-batch mode only)'
+    )
+
+    parser.add_argument(
+        '--point-image',
+        type=str,
+        default=None,
+        help='Path to one image for point prompt inference (required for --mode point-prompt)'
+    )
+
+    parser.add_argument(
+        '--input-points',
+        type=str,
+        default=None,
+        help='Point coordinates as JSON list, e.g. "[[1094, 1021]]" (required for --mode point-prompt)'
+    )
+
+    parser.add_argument(
+        '--input-labels',
+        type=str,
+        default='[1]',
+        help='Point labels as JSON list, e.g. "[1]" (default: [1])'
     )
     
     args = parser.parse_args()
+
+    parsed_points: Optional[List] = None
+    parsed_labels: Optional[List] = None
+    if args.mode == 'text-batch':
+        if args.image_dir is None:
+            parser.error("--image-dir is required when --mode text-batch")
+        if not args.prompt:
+            parser.error("--prompt is required when --mode text-batch")
+    else:
+        if args.point_image is None:
+            parser.error("--point-image is required when --mode point-prompt")
+        if args.input_points is None:
+            parser.error("--input-points is required when --mode point-prompt")
+
+        try:
+            parsed_points = parse_json_list_argument(args.input_points, "--input-points")
+            parsed_labels = parse_json_list_argument(args.input_labels, "--input-labels")
+            parsed_points, parsed_labels = normalize_point_cli_inputs(parsed_points, parsed_labels)
+        except ValueError as e:
+            parser.error(str(e))
     
-    # Set output directory to image directory if not specified
+    # Set output directory based on selected mode when not specified
     if args.output_dir is None:
-        args.output_dir = args.image_dir
+        if args.mode == 'text-batch':
+            args.output_dir = args.image_dir
+        else:
+            args.output_dir = str(Path(args.point_image).parent)
     
     try:
         # Initialize model (loads once)
@@ -822,55 +904,60 @@ Examples:
         print("SAM3 Interactive Batch Inference")
         print("="*60 + "\n")
         
-        inference_engine = SAM3Inference(
-            model_id=args.model_id,
-            half_precision=not args.no_fp16
-        )
-        
-        # Run initial batch inference
-        # image_paths, loaded_images, results = batch_infer_directory(
-        #     inference_engine=inference_engine,
-        #     image_dir=args.image_dir,
-        #     prompt=args.prompt,
-        #     output_dir=args.output_dir,
-        #     batch_size=args.batch_size,
-        #     threshold=args.threshold,
-        #     mask_threshold=args.mask_threshold,
-        #     model_id=args.model_id
-        # )
 
-        output_path = Path(args.output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        if args.mode == 'text-batch':
+            inference_engine = SAM3Inference(
+                model_id=args.model_id,
+                half_precision=not args.no_fp16
+            )
 
-        test_image_path = Path("./images/IMG_7578.HEIC")
-        test_points = [
-            [
-                1094,
-                1021
-            ]
-        ]
-        test_labels = [1]
+            image_paths, loaded_images, _ = batch_infer_directory(
+                inference_engine=inference_engine,
+                image_dir=args.image_dir,
+                prompt=args.prompt,
+                output_dir=args.output_dir,
+                batch_size=args.batch_size,
+                threshold=args.threshold,
+                mask_threshold=args.mask_threshold,
+                model_id=args.model_id
+            )
 
-        print("\n" + "="*60)
-        print("Running point prompt test")
-        print("="*60)
-        print(f"Image: {test_image_path}")
-        print(f"Points: {test_points}")
-        print(f"Labels: {test_labels}")
+            # if loaded_images and not args.no_interactive:
+            #     interactive_mode(
+            #         inference_engine=inference_engine,
+            #         image_paths=image_paths,
+            #         loaded_images=loaded_images,
+            #         output_dir=args.output_dir,
+            #         batch_size=args.batch_size,
+            #         threshold=args.threshold,
+            #         mask_threshold=args.mask_threshold,
+            #         model_id=args.model_id
+            #     )
+        else:
+            output_path = Path(args.output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            point_image_path = Path(args.point_image)
 
-        point_result = inference_engine.point_prompt_infer_single(
-            image_path=test_image_path,
-            input_points=test_points,
-            input_labels=test_labels,
-            output_dir=output_path,
-            threshold=args.threshold,
-            mask_threshold=args.mask_threshold
-        )
+            print("\n" + "="*60)
+            print("Running point prompt inference")
+            print("="*60)
+            print(f"Image: {point_image_path}")
+            print(f"Points: {parsed_points}")
+            print(f"Labels: {parsed_labels}")
 
-        masks = point_result[0][0]
-        scores = point_result[0][2]
-        print(f"Masks shape: {masks.shape}")
-        print(f"Scores: {scores}")
+            point_result = inference_engine.point_prompt_infer_single(
+                image_path=point_image_path,
+                input_points=parsed_points if parsed_points is not None else [],
+                input_labels=parsed_labels if parsed_labels is not None else [],
+                output_dir=output_path,
+                threshold=args.threshold,
+                mask_threshold=args.mask_threshold
+            )
+
+            masks = point_result[0][0]
+            scores = point_result[0][2]
+            print(f"Masks shape: {masks.shape}")
+            print(f"Scores: {scores}")
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")

@@ -207,13 +207,25 @@ execution_mode() {
     # Configuration for SAM3 Inference
     # =========================================================================
     # These can be overridden via environment variables
+    SAM3_MODE="${SAM3_MODE:-text-batch}"
     SAM3_IMAGE_DIR="${SAM3_IMAGE_DIR:-/tmp/sam3/images}"
     SAM3_PROMPT="${SAM3_PROMPT:-rebar}"
+    SAM3_POINT_IMAGE="${SAM3_POINT_IMAGE:-/tmp/sam3/images/IMG_7578.HEIC}"
+    SAM3_INPUT_POINTS="${SAM3_INPUT_POINTS:-[1094, 1021]}"
+    SAM3_INPUT_LABELS="${SAM3_INPUT_LABELS:-[1]}"
     SAM3_OUTPUT_DIR="${SAM3_OUTPUT_DIR:-/tmp/sam3/results}"
+
+    if [[ "$SAM3_MODE" != "text-batch" && "$SAM3_MODE" != "point-prompt" ]]; then
+        fail "SAM3_MODE must be 'text-batch' or 'point-prompt' (got: ${SAM3_MODE})"
+    fi
     
     log "SAM3 Inference Configuration:"
+    log "  Mode: ${SAM3_MODE}"
     log "  Image Directory: ${SAM3_IMAGE_DIR}"
     log "  Prompt: '${SAM3_PROMPT}'"
+    log "  Point Image: ${SAM3_POINT_IMAGE}"
+    log "  Input Points: ${SAM3_INPUT_POINTS}"
+    log "  Input Labels: ${SAM3_INPUT_LABELS}"
     log "  Output Directory: ${SAM3_OUTPUT_DIR}"
     log ""
     
@@ -453,16 +465,16 @@ pip install -r requirements.txt
 # Export HF token and run inference
 export HF_TOKEN="__HF_TOKEN_PLACEHOLDER__"
 python sam3_inference.py \
-    --image-dir __IMAGE_DIR_PLACEHOLDER__ \
-    --prompt "__PROMPT_PLACEHOLDER__" \
-    --output-dir __OUTPUT_DIR_PLACEHOLDER__ 
+    --mode point-prompt \
+    --point-image "/tmp/sam3/images/IMG_7578.HEIC" \
+    --input-points '[1094, 1021]' \
+    --input-labels '[1]' \
+    --output-dir __OUTPUT_DIR_PLACEHOLDER__
 REMOTE_EOF
 )
     
     # Replace placeholders with actual values
     REMOTE_SCRIPT="${REMOTE_SCRIPT//__HF_TOKEN_PLACEHOLDER__/$HF_TOKEN}"
-    REMOTE_SCRIPT="${REMOTE_SCRIPT//__IMAGE_DIR_PLACEHOLDER__/$SAM3_IMAGE_DIR}"
-    REMOTE_SCRIPT="${REMOTE_SCRIPT//__PROMPT_PLACEHOLDER__/$SAM3_PROMPT}"
     REMOTE_SCRIPT="${REMOTE_SCRIPT//__OUTPUT_DIR_PLACEHOLDER__/$SAM3_OUTPUT_DIR}"
     
     # Execute remote script
