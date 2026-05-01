@@ -905,11 +905,12 @@ Examples:
         print("="*60 + "\n")
         
 
+        inference_engine = SAM3Inference(
+            model_id=args.model_id,
+            half_precision=not args.no_fp16
+        )
+        
         if args.mode == 'text-batch':
-            inference_engine = SAM3Inference(
-                model_id=args.model_id,
-                half_precision=not args.no_fp16
-            )
 
             image_paths, loaded_images, _ = batch_infer_directory(
                 inference_engine=inference_engine,
