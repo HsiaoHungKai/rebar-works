@@ -13,8 +13,48 @@ interface ImageListResponse {
   images: string[]
 }
 
+interface PointPromptResultResponse {
+  metadata?: {
+    input_points?: unknown
+    input_labels?: unknown
+    [key: string]: unknown
+  }
+  overlayUrl?: unknown
+  error?: string
+}
+
 function toLabelText(label: PointLabel): string {
   return label === 1 ? 'positive' : 'negative'
+}
+
+function buildPointsFromMetadata(metadata: PointPromptResultResponse['metadata']): AnnotationPoint[] {
+  const inputPoints = metadata?.input_points
+  const inputLabels = metadata?.input_labels
+
+  if (!Array.isArray(inputPoints) || !Array.isArray(inputLabels)) {
+    return []
+  }
+
+  return inputPoints.flatMap((point, index) => {
+    if (!Array.isArray(point) || point.length < 2) {
+      return []
+    }
+
+    const x = Number(point[0])
+    const y = Number(point[1])
+    const label = Number(inputLabels[index])
+
+    if (!Number.isFinite(x) || !Number.isFinite(y) || (label !== 0 && label !== 1)) {
+      return []
+    }
+
+    return [{
+      id: `saved-${index}-${x}-${y}-${label}`,
+      x: Math.round(x),
+      y: Math.round(y),
+      label: label as PointLabel,
+    }]
+  })
 }
 
 function App() {
@@ -25,6 +65,8 @@ function App() {
   const [imageLoadError, setImageLoadError] = useState<string | null>(null)
   const [selectedLibraryImage, setSelectedLibraryImage] = useState<string | null>(null)
   const [isImageLoading, setIsImageLoading] = useState(false)
+  const [isPointPromptLoading, setIsPointPromptLoading] = useState(false)
+  const [hasSavedPointPromptOverlay, setHasSavedPointPromptOverlay] = useState(false)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const imageRequestIdRef = useRef(0)
 
@@ -34,6 +76,8 @@ function App() {
     }
     return buildMockMaskRegions(points, image.width, image.height)
   }, [image, points])
+
+  const canLoadPointPromptResult = image?.source === 'library' && !isImageLoading && !isPointPromptLoading
 
   useEffect(() => {
     let isMounted = true
@@ -71,6 +115,7 @@ function App() {
     })
     setPoints([])
     setImageLoadError(null)
+    setHasSavedPointPromptOverlay(false)
   }
 
   function loadImage(name: string, url: string, source: UploadedImage['source']): void {
@@ -156,6 +201,41 @@ function App() {
     setPoints((previousPoints) => previousPoints.slice(0, -1))
   }
 
+  async function handleStartPointInference(): Promise<void> {
+    if (!image || image.source !== 'library') {
+      return
+    }
+
+    setIsPointPromptLoading(true)
+    setImageLoadError(null)
+
+    try {
+      const response = await fetch(`/api/point-prompt-result?image=${encodeURIComponent(image.name)}`)
+      const payload = (await response.json()) as PointPromptResultResponse
+
+      if (!response.ok || typeof payload.overlayUrl !== 'string') {
+        throw new Error(payload.error ?? `Unable to load saved point-prompt result for ${image.name}.`)
+      }
+
+      setImage((previousImage) => {
+        if (!previousImage || previousImage.name !== image.name || previousImage.source !== 'library') {
+          return previousImage
+        }
+
+        return {
+          ...previousImage,
+          url: payload.overlayUrl as string,
+        }
+      })
+      setPoints(buildPointsFromMetadata(payload.metadata))
+      setHasSavedPointPromptOverlay(true)
+    } catch (error) {
+      setImageLoadError(error instanceof Error ? error.message : `Unable to load saved point-prompt result for ${image.name}.`)
+    } finally {
+      setIsPointPromptLoading(false)
+    }
+  }
+
   return (
     <main className="app">
       <header className="panel">
@@ -198,6 +278,14 @@ function App() {
           <button data-testid="clear-points" type="button" onClick={clearPoints} disabled={points.length === 0}>
             Clear
           </button>
+          <button
+            data-testid="start-point-inference"
+            type="button"
+            onClick={handleStartPointInference}
+            disabled={!canLoadPointPromptResult}
+          >
+            Start point inference
+          </button>
         </div>
       </header>
 
@@ -219,7 +307,7 @@ function App() {
                   preserveAspectRatio="none"
                   aria-hidden="true"
                 >
-                  {maskRegions.map((region) => (
+                  {hasSavedPointPromptOverlay ? null : maskRegions.map((region) => (
                     <circle
                       key={region.id}
                       cx={region.cx}
@@ -246,9 +334,9 @@ function App() {
             ) : (
               <div className="empty-state">Select or upload an image to start annotating.</div>
             )}
-            {isImageLoading ? (
+            {isImageLoading || isPointPromptLoading ? (
               <div className="loading-overlay" data-testid="image-loading-indicator">
-                Loading {selectedLibraryImage ?? 'image'}...
+                {isPointPromptLoading ? 'Loading saved point-prompt result...' : `Loading ${selectedLibraryImage ?? 'image'}...`}
               </div>
             ) : null}
           </div>
@@ -298,9 +386,13 @@ function App() {
                 ))}
               </ol>
             )}
-            <p className="muted">
-              Mock mask visualization is shown as translucent circles and can be replaced with backend output later.
-            </p>
+            {hasSavedPointPromptOverlay ? (
+              <p className="muted">Saved point-prompt mask loaded.</p>
+            ) : (
+              <p className="muted">
+                Mock mask visualization is shown as translucent circles and can be replaced with backend output later.
+              </p>
+            )}
           </section>
         </aside>
       </section>

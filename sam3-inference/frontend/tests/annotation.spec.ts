@@ -87,6 +87,102 @@ test('loads images from the right-side browser and clears points when switching'
   await expect(page.getByText('No points added yet.')).toBeVisible()
 })
 
+test('disables saved point-prompt loading before selecting a repo image', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByTestId('start-point-inference')).toBeDisabled()
+})
+
+test('loads a saved point-prompt overlay and metadata points', async ({ page }) => {
+  await page.route('**/api/images', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ images: ['library-a.svg'] }),
+    })
+  })
+  await page.route('**/source-images/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/source-image-thumbnails/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/api/point-prompt-result?image=library-a.svg', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {
+          input_points: [[25, 35], [90, 100]],
+          input_labels: [1, 0],
+        },
+        overlayUrl: '/point-prompt-overlays/library-a_point_prompt_overlay.png?v=1',
+      }),
+    })
+  })
+  await page.route('**/point-prompt-overlays/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('image-option-library-a.svg').click()
+  await expect(page.getByTestId('start-point-inference')).toBeEnabled()
+
+  await page.getByTestId('start-point-inference').click()
+
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute(
+    'src',
+    '/point-prompt-overlays/library-a_point_prompt_overlay.png?v=1',
+  )
+  await expect(page.getByTestId('point-list')).toContainText('positive (25, 35)')
+  await expect(page.getByTestId('point-list')).toContainText('negative (90, 100)')
+  await expect(page.getByText('Saved point-prompt mask loaded.')).toBeVisible()
+})
+
+test('shows a saved point-prompt missing error and preserves the selected image', async ({ page }) => {
+  await page.route('**/api/images', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ images: ['IMG_7566.HEIC'] }),
+    })
+  })
+  await page.route('**/source-images/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/source-image-thumbnails/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/api/point-prompt-result?image=IMG_7566.HEIC', async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Missing saved point-prompt result: IMG_7566_point_prompt.json.' }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('image-option-IMG_7566.HEIC').click()
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute('src', '/source-images/IMG_7566.HEIC')
+
+  await page.getByTestId('start-point-inference').click()
+
+  await expect(page.getByText('Missing saved point-prompt result: IMG_7566_point_prompt.json.')).toBeVisible()
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute('src', '/source-images/IMG_7566.HEIC')
+})
+
 test('maps edge clicks without horizontal drift and ignores shell padding clicks', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('image-upload-input').setInputFiles({
