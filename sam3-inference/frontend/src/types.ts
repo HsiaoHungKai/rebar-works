@@ -12,6 +12,7 @@ export interface UploadedImage {
   url: string
   width: number
   height: number
+  source: 'upload' | 'library'
 }
 
 export interface MockMaskRegion {

@@ -4,6 +4,10 @@ const SAMPLE_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="100%" height="100%" fill="#f1f5f9"/><rect x="80" y="40" width="240" height="160" fill="#cbd5e1"/></svg>',
 )
 
+const LIBRARY_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="100%" height="100%" fill="#f8fafc"/><circle cx="160" cy="100" r="60" fill="#94a3b8"/></svg>',
+)
+
 test('annotates positive and negative points', async ({ page }) => {
   await page.goto('/')
 
@@ -42,6 +46,43 @@ test('supports undo and clear', async ({ page }) => {
   await expect(page.getByTestId('point-1')).toHaveCount(0)
 
   await page.getByTestId('clear-points').click()
+  await expect(page.getByTestId('point-0')).toHaveCount(0)
+  await expect(page.getByText('No points added yet.')).toBeVisible()
+})
+
+test('loads images from the right-side browser and clears points when switching', async ({ page }) => {
+  await page.route('**/api/images', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ images: ['library-a.svg', 'library-b.svg'] }),
+    })
+  })
+  await page.route('**/source-images/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/source-image-thumbnails/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByTestId('image-browser-list')).toContainText('library-a.svg')
+  await page.getByTestId('image-option-library-a.svg').click()
+
+  const stage = page.getByTestId('annotation-stage')
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute('alt', 'library-a.svg')
+
+  await stage.click({ position: { x: 40, y: 40 } })
+  await expect(page.getByTestId('point-0')).toBeVisible()
+
+  await page.getByTestId('image-option-library-b.svg').click()
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute('alt', 'library-b.svg')
   await expect(page.getByTestId('point-0')).toHaveCount(0)
   await expect(page.getByText('No points added yet.')).toBeVisible()
 })

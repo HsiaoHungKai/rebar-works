@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, MouseEvent } from 'react'
 import './App.css'
 import type { AnnotationPoint, PointLabel, UploadedImage } from './types'
@@ -9,6 +9,10 @@ const POINT_COLORS: Record<PointLabel, string> = {
   0: '#ef4444',
 }
 
+interface ImageListResponse {
+  images: string[]
+}
+
 function toLabelText(label: PointLabel): string {
   return label === 1 ? 'positive' : 'negative'
 }
@@ -17,7 +21,12 @@ function App() {
   const [activeLabel, setActiveLabel] = useState<PointLabel>(1)
   const [points, setPoints] = useState<AnnotationPoint[]>([])
   const [image, setImage] = useState<UploadedImage | null>(null)
+  const [availableImages, setAvailableImages] = useState<string[]>([])
+  const [imageLoadError, setImageLoadError] = useState<string | null>(null)
+  const [selectedLibraryImage, setSelectedLibraryImage] = useState<string | null>(null)
+  const [isImageLoading, setIsImageLoading] = useState(false)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const imageRequestIdRef = useRef(0)
 
   const maskRegions = useMemo(() => {
     if (!image) {
@@ -26,6 +35,84 @@ function App() {
     return buildMockMaskRegions(points, image.width, image.height)
   }, [image, points])
 
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadAvailableImages(): Promise<void> {
+      try {
+        const response = await fetch('/api/images')
+        if (!response.ok) {
+          throw new Error('Unable to load image list.')
+        }
+        const payload = (await response.json()) as ImageListResponse
+        if (isMounted) {
+          setAvailableImages(Array.isArray(payload.images) ? payload.images : [])
+        }
+      } catch {
+        if (isMounted) {
+          setImageLoadError('Unable to load images from ./images.')
+        }
+      }
+    }
+
+    void loadAvailableImages()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  function replaceImage(nextImage: UploadedImage): void {
+    setImage((previousImage) => {
+      if (previousImage?.source === 'upload') {
+        URL.revokeObjectURL(previousImage.url)
+      }
+      return nextImage
+    })
+    setPoints([])
+    setImageLoadError(null)
+  }
+
+  function loadImage(name: string, url: string, source: UploadedImage['source']): void {
+    const requestId = imageRequestIdRef.current + 1
+    imageRequestIdRef.current = requestId
+    setIsImageLoading(true)
+    setImageLoadError(null)
+    setSelectedLibraryImage(source === 'library' ? name : null)
+
+    const previewImage = new Image()
+    previewImage.onload = () => {
+      if (imageRequestIdRef.current !== requestId) {
+        if (source === 'upload') {
+          URL.revokeObjectURL(url)
+        }
+        return
+      }
+      replaceImage({
+        name,
+        url,
+        width: previewImage.naturalWidth,
+        height: previewImage.naturalHeight,
+        source,
+      })
+      setIsImageLoading(false)
+    }
+    previewImage.onerror = () => {
+      if (imageRequestIdRef.current !== requestId) {
+        if (source === 'upload') {
+          URL.revokeObjectURL(url)
+        }
+        return
+      }
+      if (source === 'upload') {
+        URL.revokeObjectURL(url)
+      }
+      setIsImageLoading(false)
+      setImageLoadError(`Unable to load ${name}.`)
+    }
+    previewImage.src = url
+  }
+
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0]
     if (!file) {
@@ -33,23 +120,12 @@ function App() {
     }
 
     const nextUrl = URL.createObjectURL(file)
-    const previewImage = new Image()
-    previewImage.onload = () => {
-      setImage((previousImage) => {
-        if (previousImage) {
-          URL.revokeObjectURL(previousImage.url)
-        }
-        return {
-          name: file.name,
-          url: nextUrl,
-          width: previewImage.naturalWidth,
-          height: previewImage.naturalHeight,
-        }
-      })
-      setPoints([])
-    }
-    previewImage.src = nextUrl
+    loadImage(file.name, nextUrl, 'upload')
     event.target.value = ''
+  }
+
+  function handleLibraryImageSelect(filename: string): void {
+    loadImage(filename, `/source-images/${encodeURIComponent(filename)}`, 'library')
   }
 
   function handleImageStageClick(event: MouseEvent<HTMLDivElement>): void {
@@ -84,7 +160,7 @@ function App() {
     <main className="app">
       <header className="panel">
         <h1>Point Prompt Annotation</h1>
-        <p>Upload an image, then click to add positive (green) or negative (red) point prompts.</p>
+        <p>Select an image from ./images or upload one, then click to add positive (green) or negative (red) points.</p>
         <div className="controls">
           <label className="upload">
             <span>Image</span>
@@ -168,28 +244,64 @@ function App() {
                 ))}
               </div>
             ) : (
-              <div className="empty-state">Upload an image to start annotating.</div>
+              <div className="empty-state">Select or upload an image to start annotating.</div>
             )}
+            {isImageLoading ? (
+              <div className="loading-overlay" data-testid="image-loading-indicator">
+                Loading {selectedLibraryImage ?? 'image'}...
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <aside className="panel point-list-panel">
-          <h2>Points ({points.length})</h2>
-          {points.length === 0 ? (
-            <p className="muted">No points added yet.</p>
-          ) : (
-            <ol data-testid="point-list">
-              {points.map((point, index) => (
-                <li key={point.id}>
-                  <span className="dot" style={{ backgroundColor: POINT_COLORS[point.label] }} />
-                  {index + 1}. {toLabelText(point.label)} ({point.x}, {point.y})
-                </li>
-              ))}
-            </ol>
-          )}
-          <p className="muted">
-            Mock mask visualization is shown as translucent circles and can be replaced with backend output later.
-          </p>
+        <aside className="panel side-panel">
+          <section className="image-browser" aria-label="Images from ./images">
+            <h2>Images ({availableImages.length})</h2>
+            {imageLoadError ? <p className="error-message">{imageLoadError}</p> : null}
+            {availableImages.length === 0 ? (
+              <p className="muted">No images found in ./images.</p>
+            ) : (
+              <div className="image-browser-list" data-testid="image-browser-list">
+                {availableImages.map((filename) => {
+                  const thumbnailUrl = `/source-image-thumbnails/${encodeURIComponent(filename)}`
+                  const isActive = selectedLibraryImage === filename || (image?.source === 'library' && image.name === filename)
+
+                  return (
+                    <button
+                      key={filename}
+                      type="button"
+                      className={isActive ? 'image-option active' : 'image-option'}
+                      data-testid={`image-option-${filename}`}
+                      onClick={() => handleLibraryImageSelect(filename)}
+                      aria-pressed={isActive}
+                    >
+                      <img src={thumbnailUrl} alt="" loading="lazy" />
+                      <span>{filename}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="point-list-panel">
+            <h2>Points ({points.length})</h2>
+            {points.length === 0 ? (
+              <p className="muted">No points added yet.</p>
+            ) : (
+              <ol data-testid="point-list">
+                {points.map((point, index) => (
+                  <li key={point.id}>
+                    <span className="dot" style={{ backgroundColor: POINT_COLORS[point.label] }} />
+                    {index + 1}. {toLabelText(point.label)} ({point.x}, {point.y})
+                  </li>
+                ))}
+              </ol>
+            )}
+            <p className="muted">
+              Mock mask visualization is shown as translucent circles and can be replaced with backend output later.
+            </p>
+          </section>
         </aside>
       </section>
     </main>
