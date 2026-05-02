@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Union, List, Optional, Tuple, Dict
+from typing import Union, List, Optional, Tuple, Dict, Any
 from PIL import Image
 from transformers import Sam3Model, Sam3Processor, Sam3TrackerModel, Sam3TrackerProcessor
 import requests
@@ -461,16 +461,172 @@ def normalize_point_cli_inputs(input_points: List, input_labels: List) -> Tuple[
     return input_points, input_labels
 
 
+def point_prompt_json_example() -> str:
+    """Return the preferred interactive point-prompt JSON example."""
+    return (
+        '{"image":"./images/IMG_7578.HEIC",'
+        '"positive":[[538,1077],[3154,852]],'
+        '"negative":[[1021,2243]]}'
+    )
+
+
 def print_point_prompt_help():
-    """Print commands for the interactive point-prompt loop."""
+    """Print instructions for the interactive point-prompt loop."""
+    print("\nHow to run point prompts:")
+    print("  Type one JSON object per inference. The image value must be a full or relative path.")
+    print("  Positive points mark the object you want to keep.")
+    print("  Negative points mark nearby regions you want to exclude.")
+    print("  Each point is [x, y] in original image pixels.")
+    print("\nExamples:")
+    print(f"  {point_prompt_json_example()}")
+    print('  {"image":"./images/IMG_7617.HEIC","positive":[[527,1083]]}')
+    print("\nAlternative format:")
+    print('  {"image":"./images/IMG_7578.HEIC","points":[[538,1077],[1021,2243]],"labels":[1,0]}')
     print("\nCommands:")
-    print("  image <path>       Set the current image path")
-    print("  points <json>      Set point coordinates, e.g. points [[1094, 1021], [1200, 900]]")
-    print("  labels <json>      Set point labels, e.g. labels [1, 0]")
-    print("  run                Run point-prompt inference with the current state")
-    print("  show               Print current image, points, labels, and thresholds")
-    print("  help               Print this command list")
-    print("  quit, exit, q      Exit\n")
+    print("  help               Print this guide")
+    print("  quit, exit, q      Exit interactive mode\n")
+
+
+def parse_point_prompt_points(point_values: Any, field_name: str) -> List[List[Union[int, float]]]:
+    """Validate an interactive positive/negative point list."""
+    if point_values is None:
+        return []
+    if not isinstance(point_values, list):
+        raise ValueError(f'"{field_name}" must be a list of [x, y] points.')
+
+    points = []
+    for index, point in enumerate(point_values):
+        if not isinstance(point, list) or len(point) != 2:
+            raise ValueError(
+                f'"{field_name}" point #{index + 1} must be [x, y], got {point!r}.'
+            )
+
+        x, y = point
+        if (
+            isinstance(x, bool)
+            or isinstance(y, bool)
+            or not isinstance(x, (int, float))
+            or not isinstance(y, (int, float))
+        ):
+            raise ValueError(
+                f'"{field_name}" point #{index + 1} must use numeric x and y values, '
+                f"got {point!r}."
+            )
+
+        points.append([x, y])
+
+    return points
+
+
+def validate_point_bounds(
+    points: List[List[Union[int, float]]],
+    image_path: Path,
+    image_size: Tuple[int, int]
+):
+    """Raise a detailed error when a point is outside the image."""
+    width, height = image_size
+    for index, point in enumerate(points):
+        x, y = point
+        if x < 0 or y < 0 or x >= width or y >= height:
+            raise ValueError(
+                f"Point #{index + 1} {point} is outside {image_path}. "
+                f"Valid x range is 0 to {width - 1}; valid y range is 0 to {height - 1}."
+            )
+
+
+def load_image_size_for_point_prompt(image_path: Path) -> Tuple[int, int]:
+    """Validate an image path and return the image dimensions."""
+    if not image_path.exists():
+        raise ValueError(
+            f"Image path not found: {image_path}. "
+            "Interactive mode uses path-only image input, so provide a valid full or relative path."
+        )
+    if not image_path.is_file():
+        raise ValueError(f"Image path is not a file: {image_path}")
+
+    try:
+        with Image.open(image_path) as image:
+            return image.size
+    except Exception as exc:
+        raise ValueError(
+            f"File exists but could not be opened as an image: {image_path}. Error: {exc}"
+        ) from exc
+
+
+def parse_interactive_point_prompt_request(
+    raw_value: str,
+    inference_engine: SAM3Inference
+) -> Tuple[Path, List, List]:
+    """Parse and validate one interactive point-prompt JSON object."""
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Input must be one JSON object. JSON parse error: {exc}. "
+            f"Example: {point_prompt_json_example()}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Input must be one JSON object, not {type(payload).__name__}. "
+            f"Example: {point_prompt_json_example()}"
+        )
+
+    image_value = payload.get("image")
+    if not isinstance(image_value, str) or not image_value.strip():
+        raise ValueError('"image" is required and must be a full or relative image path string.')
+
+    image_path = Path(image_value.strip())
+    image_size = load_image_size_for_point_prompt(image_path)
+
+    uses_named_prompts = "positive" in payload or "negative" in payload
+    uses_points_labels = "points" in payload or "labels" in payload
+
+    if uses_named_prompts and uses_points_labels:
+        raise ValueError('Use either "positive"/"negative" or "points"/"labels", not both.')
+
+    if uses_points_labels:
+        if "points" not in payload:
+            raise ValueError('"points" is required when using "labels".')
+        if "labels" not in payload:
+            raise ValueError('"labels" is required when using "points".')
+
+        if not isinstance(payload["points"], list):
+            raise ValueError('"points" must be a JSON list.')
+        if not isinstance(payload["labels"], list):
+            raise ValueError('"labels" must be a JSON list.')
+
+        try:
+            input_points, input_labels = normalize_point_cli_inputs(
+                payload["points"],
+                payload["labels"]
+            )
+            normalized_points, normalized_labels = inference_engine._normalize_point_inputs(
+                input_points=input_points,
+                input_labels=input_labels
+            )
+        except (TypeError, IndexError, ValueError) as exc:
+            raise ValueError(f"Invalid points/labels: {exc}") from exc
+
+        flat_points = normalized_points[0][0]
+        flat_labels = normalized_labels[0][0]
+        for index, label in enumerate(flat_labels):
+            if label not in (0, 1):
+                raise ValueError(f"Label #{index + 1} must be 1 for positive or 0 for negative.")
+
+        validate_point_bounds(flat_points, image_path, image_size)
+        return image_path, input_points, input_labels
+
+    positive_points = parse_point_prompt_points(payload.get("positive"), "positive")
+    negative_points = parse_point_prompt_points(payload.get("negative"), "negative")
+    input_points = positive_points + negative_points
+    input_labels = [1] * len(positive_points) + [0] * len(negative_points)
+
+    if not input_points:
+        raise ValueError('At least one "positive" or "negative" point is required.')
+
+    validate_point_bounds(input_points, image_path, image_size)
+    return image_path, input_points, input_labels
 
 
 def interactive_point_prompt_mode(
@@ -479,10 +635,7 @@ def interactive_point_prompt_mode(
     threshold: float,
     mask_threshold: float
 ):
-    """Interactive loop for repeated point-prompt inference on user-provided image paths."""
-    current_image_path: Optional[Path] = None
-    current_points: Optional[List] = None
-    current_labels: Optional[List] = None
+    """Interactive loop for repeated point-prompt inference from JSON requests."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -498,9 +651,7 @@ def interactive_point_prompt_mode(
             if not user_input:
                 continue
 
-            command, _, payload = user_input.partition(" ")
-            command = command.lower()
-            payload = payload.strip()
+            command = user_input.lower()
 
             if command in ['quit', 'exit', 'q']:
                 print("\nExiting interactive point prompt mode.")
@@ -510,96 +661,30 @@ def interactive_point_prompt_mode(
                 print_point_prompt_help()
                 continue
 
-            if command == 'image':
-                if not payload:
-                    print("Usage: image <path>")
-                    continue
-                current_image_path = Path(payload)
-                print(f"Image set: {current_image_path}")
-                continue
-
-            if command == 'points':
-                if not payload:
-                    print("Usage: points <json>")
-                    continue
-                try:
-                    parsed_points = parse_json_list_argument(payload, "points")
-                    labels_for_validation = current_labels if current_labels is not None else [1]
-                    current_points, _ = normalize_point_cli_inputs(
-                        parsed_points,
-                        labels_for_validation
-                    )
-                    print(f"Points set: {current_points}")
-                except ValueError as e:
-                    print(f"Invalid points: {e}")
-                continue
-
-            if command == 'labels':
-                if not payload:
-                    print("Usage: labels <json>")
-                    continue
-                try:
-                    parsed_labels = parse_json_list_argument(payload, "labels")
-                    points_for_validation = current_points if current_points is not None else [[0, 0]]
-                    _, current_labels = normalize_point_cli_inputs(
-                        points_for_validation,
-                        parsed_labels
-                    )
-                    print(f"Labels set: {current_labels}")
-                except ValueError as e:
-                    print(f"Invalid labels: {e}")
-                continue
-
-            if command == 'show':
-                print("\nCurrent point-prompt state:")
-                print(f"  Image: {current_image_path}")
-                print(f"  Points: {current_points}")
-                print(f"  Labels: {current_labels}")
-                print(f"  Output directory: {output_path}")
-                print(f"  Threshold: {threshold}")
-                print(f"  Mask threshold: {mask_threshold}\n")
-                continue
-
-            if command == 'run':
-                if current_image_path is None:
-                    print("Set an image first with: image <path>")
-                    continue
-                if not current_image_path.exists():
-                    print(f"Image not found: {current_image_path}")
-                    continue
-                if current_points is None:
-                    print("Set points first with: points <json>")
-                    continue
-                if current_labels is None:
-                    print("Set labels first with: labels <json>")
-                    continue
-
-                try:
-                    inference_engine._normalize_point_inputs(
-                        input_points=current_points,
-                        input_labels=current_labels
-                    )
-                except (TypeError, IndexError, ValueError) as e:
-                    print(f"Invalid point prompt state: {e}")
-                    continue
-
-                print(f"\nRunning point prompt inference on {current_image_path}...")
-                point_result = inference_engine.point_prompt_infer_single(
-                    image_path=current_image_path,
-                    input_points=current_points,
-                    input_labels=current_labels,
-                    output_dir=output_path,
-                    threshold=threshold,
-                    mask_threshold=mask_threshold
+            try:
+                image_path, input_points, input_labels = parse_interactive_point_prompt_request(
+                    user_input,
+                    inference_engine
                 )
-                masks = point_result[0][0]
-                scores = point_result[0][2]
-                print(f"Masks shape: {masks.shape}")
-                print(f"Scores: {scores}\n")
+            except ValueError as e:
+                print(f"Invalid request: {e}")
                 continue
 
-            print(f"Unknown command: {command}")
-            print("Type 'help' for available commands.")
+            print(f"\nRunning point prompt inference on {image_path}...")
+            print(f"Points: {input_points}")
+            print(f"Labels: {input_labels}")
+            point_result = inference_engine.point_prompt_infer_single(
+                image_path=image_path,
+                input_points=input_points,
+                input_labels=input_labels,
+                output_dir=output_path,
+                threshold=threshold,
+                mask_threshold=mask_threshold
+            )
+            masks = point_result[0][0]
+            scores = point_result[0][2]
+            print(f"Masks shape: {masks.shape}")
+            print(f"Scores: {scores}\n")
 
         except KeyboardInterrupt:
             print("\n\nReceived interrupt signal. Exiting...")
@@ -928,14 +1013,12 @@ Examples:
   # One-shot point prompt mode (requires --no-interactive, --point-image, and --input-points)
   python sam3_inference.py --mode point-prompt --no-interactive --point-image ./images/IMG_7578.HEIC --input-points "[1094, 1021]"
 
-Interactive point-prompt commands:
-  image <path>       Set the current image path
-  points <json>      Set point coordinates, e.g. points [[1094, 1021], [1200, 900]]
-  labels <json>      Set point labels, e.g. labels [1, 0]
-  run                Run point-prompt inference
-  show               Print current state
-  help               Print commands
-  quit, exit, q      Exit
+Interactive point-prompt input:
+  Type one JSON object per inference:
+  {"image":"./images/IMG_7578.HEIC","positive":[[538,1077],[3154,852]],"negative":[[1021,2243]]}
+
+  Positive points mark the object to keep; negative points mark regions to exclude.
+  Use help for examples, or quit/exit/q to exit.
         """
     )
 
