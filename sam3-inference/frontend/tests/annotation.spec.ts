@@ -93,6 +93,21 @@ test('disables saved point-prompt loading before selecting a repo image', async 
   await expect(page.getByTestId('start-point-inference')).toBeDisabled()
 })
 
+test('requires a prompt before starting text inference mode', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByTestId('start-text-inference')).toBeDisabled()
+  await page.getByTestId('text-prompt-input').fill('rebar')
+  await expect(page.getByTestId('start-text-inference')).toBeEnabled()
+})
+
+test('serves HEIC source images as normalized JPEGs', async ({ page }) => {
+  const response = await page.request.get('/source-images/IMG_7566.HEIC')
+
+  expect(response.ok()).toBeTruthy()
+  expect(response.headers()['content-type']).toContain('image/jpeg')
+})
+
 test('loads a saved point-prompt overlay and metadata points', async ({ page }) => {
   await page.route('**/api/images', async (route) => {
     await route.fulfill({
@@ -180,6 +195,137 @@ test('shows a saved point-prompt missing error and preserves the selected image'
   await page.getByTestId('start-point-inference').click()
 
   await expect(page.getByText('Missing saved point-prompt result: IMG_7566_point_prompt.json.')).toBeVisible()
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute('src', '/source-images/IMG_7566.HEIC')
+})
+
+test('loads saved text-batch overlays for checked images', async ({ page }) => {
+  const requestedTextBatchImages: string[] = []
+  const requestedPointPromptImages: string[] = []
+
+  await page.route('**/api/images', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ images: ['library-a.svg', 'library-b.svg'] }),
+    })
+  })
+  await page.route('**/source-images/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/source-image-thumbnails/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/api/text-batch-result?image=*', async (route) => {
+    const requestedImage = new URL(route.request().url()).searchParams.get('image')
+    if (requestedImage) {
+      requestedTextBatchImages.push(requestedImage)
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {},
+        overlayUrl: `/text-batch-overlays/${requestedImage?.replace('.svg', '')}_text_batch_overlay.png?v=1`,
+      }),
+    })
+  })
+  await page.route('**/api/point-prompt-result?image=library-a.svg', async (route) => {
+    requestedPointPromptImages.push(new URL(route.request().url()).searchParams.get('image') ?? '')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {
+          input_points: [[25, 35]],
+          input_labels: [1],
+        },
+        overlayUrl: '/point-prompt-overlays/library-a_point_prompt_overlay.png?v=1',
+      }),
+    })
+  })
+  await page.route('**/api/point-prompt-result?image=library-b.svg', async (route) => {
+    requestedPointPromptImages.push(new URL(route.request().url()).searchParams.get('image') ?? '')
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'Missing saved point-prompt result: library-b_point_prompt.json.',
+      }),
+    })
+  })
+  await page.route('**/text-batch-overlays/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('text-prompt-input').fill('rebar')
+  await page.getByTestId('start-text-inference').click()
+  await expect(page.getByText('Text inference mode active. Select an image from the browser.')).toBeVisible()
+  await expect(page.getByTestId('text-batch-checkbox-library-a.svg')).toBeVisible()
+  await expect(page.getByTestId('text-batch-checkbox-library-b.svg')).toBeVisible()
+
+  await page.getByTestId('text-batch-checkbox-library-a.svg').check()
+
+  expect(requestedTextBatchImages).toContain('library-a.svg')
+  expect(requestedPointPromptImages).toContain('library-a.svg')
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute(
+    'src',
+    '/text-batch-overlays/library-a_text_batch_overlay.png?v=1',
+  )
+  await expect(page.getByTestId('point-list')).toContainText('positive (25, 35)')
+  await expect(page.getByTestId('text-batch-status-library-a.svg')).toHaveText('Saved text-batch mask and point markers loaded.')
+
+  await page.getByTestId('text-batch-checkbox-library-b.svg').check()
+
+  expect(requestedTextBatchImages).toContain('library-b.svg')
+  expect(requestedPointPromptImages).toContain('library-b.svg')
+  await expect(page.getByTestId('annotation-image')).toHaveAttribute(
+    'src',
+    '/text-batch-overlays/library-b_text_batch_overlay.png?v=1',
+  )
+  await expect(page.getByText('2 selected for text inference.')).toBeVisible()
+  await expect(page.getByTestId('text-batch-status-library-b.svg')).toHaveText('Saved text-batch mask loaded.')
+})
+
+test('shows a saved text-batch missing error and preserves the selected image', async ({ page }) => {
+  await page.route('**/api/images', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ images: ['IMG_7566.HEIC'] }),
+    })
+  })
+  await page.route('**/source-images/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/source-image-thumbnails/*', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: LIBRARY_SVG,
+    })
+  })
+  await page.route('**/api/text-batch-result?image=IMG_7566.HEIC', async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Missing saved text-batch result: IMG_7566_text_batch.json.' }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('text-prompt-input').fill('rebar')
+  await page.getByTestId('start-text-inference').click()
+  await page.getByTestId('text-batch-checkbox-IMG_7566.HEIC').check()
+
+  await expect(page.getByTestId('text-batch-status-IMG_7566.HEIC')).toHaveText('Missing saved text-batch result: IMG_7566_text_batch.json.')
   await expect(page.getByTestId('annotation-image')).toHaveAttribute('src', '/source-images/IMG_7566.HEIC')
 })
 

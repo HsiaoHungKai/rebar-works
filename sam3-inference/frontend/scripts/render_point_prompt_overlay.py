@@ -9,6 +9,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+OVERLAY_COLORS = {
+    "blue": np.array([37, 99, 235, 128], dtype=np.uint8),
+    "green": np.array([22, 163, 74, 128], dtype=np.uint8),
+}
+
 
 def load_image(path: Path) -> Image.Image:
     if path.suffix.lower() in {".heic", ".heif"}:
@@ -19,7 +24,7 @@ def load_image(path: Path) -> Image.Image:
         except ModuleNotFoundError:
             with tempfile.NamedTemporaryFile(suffix=".jpg") as converted_file:
                 subprocess.run(
-                    ["sips", "-s", "format", "jpeg", str(path), "--out", converted_file.name],
+                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(path), "-frames:v", "1", converted_file.name],
                     check=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -44,7 +49,7 @@ def normalize_masks(masks: np.ndarray) -> np.ndarray:
     return masks.astype(bool)
 
 
-def render_overlay(image_path: Path, npz_path: Path, output_path: Path) -> None:
+def render_overlay(image_path: Path, npz_path: Path, output_path: Path, color: str) -> None:
     image = load_image(image_path)
     masks = normalize_masks(np.load(npz_path)["masks"])
 
@@ -52,7 +57,7 @@ def render_overlay(image_path: Path, npz_path: Path, output_path: Path) -> None:
         output = image
     else:
         output = image.convert("RGBA")
-        overlay_color = np.array([37, 99, 235, 128], dtype=np.uint8)
+        overlay_color = OVERLAY_COLORS[color]
 
         for mask in masks:
             if mask.shape != (image.height, image.width):
@@ -73,9 +78,10 @@ def main() -> None:
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--npz", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--color", choices=sorted(OVERLAY_COLORS), default="blue")
     args = parser.parse_args()
 
-    render_overlay(args.image, args.npz, args.output)
+    render_overlay(args.image, args.npz, args.output, args.color)
 
 
 if __name__ == "__main__":

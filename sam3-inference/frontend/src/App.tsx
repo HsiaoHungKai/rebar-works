@@ -13,7 +13,7 @@ interface ImageListResponse {
   images: string[]
 }
 
-interface PointPromptResultResponse {
+interface SavedOverlayResultResponse {
   metadata?: {
     input_points?: unknown
     input_labels?: unknown
@@ -23,11 +23,17 @@ interface PointPromptResultResponse {
   error?: string
 }
 
+interface TextBatchImageState {
+  selected: boolean
+  state: 'idle' | 'loading' | 'loaded' | 'error'
+  message?: string
+}
+
 function toLabelText(label: PointLabel): string {
   return label === 1 ? 'positive' : 'negative'
 }
 
-function buildPointsFromMetadata(metadata: PointPromptResultResponse['metadata']): AnnotationPoint[] {
+function buildPointsFromMetadata(metadata: SavedOverlayResultResponse['metadata']): AnnotationPoint[] {
   const inputPoints = metadata?.input_points
   const inputLabels = metadata?.input_labels
 
@@ -67,6 +73,11 @@ function App() {
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [isPointPromptLoading, setIsPointPromptLoading] = useState(false)
   const [hasSavedPointPromptOverlay, setHasSavedPointPromptOverlay] = useState(false)
+  const [textPrompt, setTextPrompt] = useState('')
+  const [isTextInferenceMode, setIsTextInferenceMode] = useState(false)
+  const [textBatchImages, setTextBatchImages] = useState<Record<string, TextBatchImageState>>({})
+  const [hasSavedTextBatchOverlay, setHasSavedTextBatchOverlay] = useState(false)
+  const [textBatchStatus, setTextBatchStatus] = useState<string | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const imageRequestIdRef = useRef(0)
 
@@ -77,7 +88,11 @@ function App() {
     return buildMockMaskRegions(points, image.width, image.height)
   }, [image, points])
 
-  const canLoadPointPromptResult = image?.source === 'library' && !isImageLoading && !isPointPromptLoading
+  const trimmedTextPrompt = textPrompt.trim()
+  const isTextBatchLoading = Object.values(textBatchImages).some((textBatchImage) => textBatchImage.state === 'loading')
+  const selectedTextBatchCount = Object.values(textBatchImages).filter((textBatchImage) => textBatchImage.selected).length
+  const canLoadPointPromptResult = image?.source === 'library' && !isImageLoading && !isPointPromptLoading && !isTextBatchLoading
+  const canStartTextInference = trimmedTextPrompt.length > 0 && !isImageLoading && !isTextBatchLoading
 
   useEffect(() => {
     let isMounted = true
@@ -116,46 +131,62 @@ function App() {
     setPoints([])
     setImageLoadError(null)
     setHasSavedPointPromptOverlay(false)
+    setHasSavedTextBatchOverlay(false)
+    setTextBatchStatus(null)
   }
 
-  function loadImage(name: string, url: string, source: UploadedImage['source']): void {
+  function updateTextBatchImage(filename: string, nextState: TextBatchImageState): void {
+    setTextBatchImages((previousImages) => ({
+      ...previousImages,
+      [filename]: nextState,
+    }))
+  }
+
+  function loadImage(name: string, url: string, source: UploadedImage['source']): Promise<void> {
     const requestId = imageRequestIdRef.current + 1
     imageRequestIdRef.current = requestId
     setIsImageLoading(true)
     setImageLoadError(null)
     setSelectedLibraryImage(source === 'library' ? name : null)
 
-    const previewImage = new Image()
-    previewImage.onload = () => {
-      if (imageRequestIdRef.current !== requestId) {
+    return new Promise((resolve, reject) => {
+      const previewImage = new Image()
+      previewImage.onload = () => {
+        if (imageRequestIdRef.current !== requestId) {
+          if (source === 'upload') {
+            URL.revokeObjectURL(url)
+          }
+          resolve()
+          return
+        }
+        replaceImage({
+          name,
+          url,
+          width: previewImage.naturalWidth,
+          height: previewImage.naturalHeight,
+          source,
+        })
+        setIsImageLoading(false)
+        resolve()
+      }
+      previewImage.onerror = () => {
+        if (imageRequestIdRef.current !== requestId) {
+          if (source === 'upload') {
+            URL.revokeObjectURL(url)
+          }
+          resolve()
+          return
+        }
         if (source === 'upload') {
           URL.revokeObjectURL(url)
         }
-        return
+        setIsImageLoading(false)
+        const message = `Unable to load ${name}.`
+        setImageLoadError(message)
+        reject(new Error(message))
       }
-      replaceImage({
-        name,
-        url,
-        width: previewImage.naturalWidth,
-        height: previewImage.naturalHeight,
-        source,
-      })
-      setIsImageLoading(false)
-    }
-    previewImage.onerror = () => {
-      if (imageRequestIdRef.current !== requestId) {
-        if (source === 'upload') {
-          URL.revokeObjectURL(url)
-        }
-        return
-      }
-      if (source === 'upload') {
-        URL.revokeObjectURL(url)
-      }
-      setIsImageLoading(false)
-      setImageLoadError(`Unable to load ${name}.`)
-    }
-    previewImage.src = url
+      previewImage.src = url
+    })
   }
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>): void {
@@ -165,12 +196,108 @@ function App() {
     }
 
     const nextUrl = URL.createObjectURL(file)
-    loadImage(file.name, nextUrl, 'upload')
+    void loadImage(file.name, nextUrl, 'upload')
     event.target.value = ''
   }
 
-  function handleLibraryImageSelect(filename: string): void {
-    loadImage(filename, `/source-images/${encodeURIComponent(filename)}`, 'library')
+  async function handleLibraryImageSelect(filename: string): Promise<void> {
+    if (isTextInferenceMode) {
+      await loadSavedTextBatchForImage(filename)
+      return
+    }
+
+    const sourceUrl = `/source-images/${encodeURIComponent(filename)}`
+
+    try {
+      await loadImage(filename, sourceUrl, 'library')
+    } catch {
+      return
+    }
+  }
+
+  async function fetchSavedOverlayResult(endpoint: string, filename: string): Promise<SavedOverlayResultResponse> {
+    const response = await fetch(`${endpoint}?image=${encodeURIComponent(filename)}`)
+    const payload = (await response.json()) as SavedOverlayResultResponse
+
+    if (!response.ok || typeof payload.overlayUrl !== 'string') {
+      throw new Error(payload.error ?? `Unable to load saved result for ${filename}.`)
+    }
+
+    return payload
+  }
+
+  async function fetchOptionalPointPromptResult(filename: string): Promise<SavedOverlayResultResponse | null> {
+    try {
+      return await fetchSavedOverlayResult('/api/point-prompt-result', filename)
+    } catch {
+      return null
+    }
+  }
+
+  async function loadSavedTextBatchForImage(filename: string): Promise<void> {
+    const sourceUrl = `/source-images/${encodeURIComponent(filename)}`
+
+    updateTextBatchImage(filename, {
+      selected: true,
+      state: 'loading',
+      message: 'Loading saved text-batch result...',
+    })
+    setImageLoadError(null)
+    setTextBatchStatus(null)
+
+    try {
+      await loadImage(filename, sourceUrl, 'library')
+      const [textBatchPayload, pointPromptPayload] = await Promise.all([
+        fetchSavedOverlayResult('/api/text-batch-result', filename),
+        fetchOptionalPointPromptResult(filename),
+      ])
+
+      setImage((previousImage) => {
+        if (!previousImage || previousImage.name !== filename || previousImage.source !== 'library') {
+          return previousImage
+        }
+
+        return {
+          ...previousImage,
+          url: textBatchPayload.overlayUrl as string,
+        }
+      })
+      const savedPoints = buildPointsFromMetadata(pointPromptPayload?.metadata)
+      setPoints(savedPoints)
+      setHasSavedPointPromptOverlay(false)
+      setHasSavedTextBatchOverlay(true)
+      const message = savedPoints.length > 0
+        ? 'Saved text-batch mask and point markers loaded.'
+        : 'Saved text-batch mask loaded.'
+      setTextBatchStatus(message)
+      updateTextBatchImage(filename, {
+        selected: true,
+        state: 'loaded',
+        message,
+      })
+    } catch (error) {
+      setHasSavedTextBatchOverlay(false)
+      setTextBatchStatus(null)
+      const message = error instanceof Error ? error.message : `Unable to load saved text-batch result for ${filename}.`
+      setImageLoadError(message)
+      updateTextBatchImage(filename, {
+        selected: true,
+        state: 'error',
+        message,
+      })
+    }
+  }
+
+  function handleTextBatchCheckboxChange(filename: string, checked: boolean): void {
+    if (!checked) {
+      updateTextBatchImage(filename, {
+        selected: false,
+        state: 'idle',
+      })
+      return
+    }
+
+    void loadSavedTextBatchForImage(filename)
   }
 
   function handleImageStageClick(event: MouseEvent<HTMLDivElement>): void {
@@ -211,7 +338,7 @@ function App() {
 
     try {
       const response = await fetch(`/api/point-prompt-result?image=${encodeURIComponent(image.name)}`)
-      const payload = (await response.json()) as PointPromptResultResponse
+      const payload = (await response.json()) as SavedOverlayResultResponse
 
       if (!response.ok || typeof payload.overlayUrl !== 'string') {
         throw new Error(payload.error ?? `Unable to load saved point-prompt result for ${image.name}.`)
@@ -229,11 +356,25 @@ function App() {
       })
       setPoints(buildPointsFromMetadata(payload.metadata))
       setHasSavedPointPromptOverlay(true)
+      setHasSavedTextBatchOverlay(false)
+      setTextBatchStatus(null)
     } catch (error) {
       setImageLoadError(error instanceof Error ? error.message : `Unable to load saved point-prompt result for ${image.name}.`)
     } finally {
       setIsPointPromptLoading(false)
     }
+  }
+
+  function handleStartTextInference(): void {
+    if (!canStartTextInference) {
+      return
+    }
+
+    setIsTextInferenceMode(true)
+    setTextBatchImages({})
+    setHasSavedTextBatchOverlay(false)
+    setTextBatchStatus('Text inference mode active. Select an image from the browser.')
+    setImageLoadError(null)
   }
 
   return (
@@ -286,6 +427,24 @@ function App() {
           >
             Start point inference
           </button>
+          <label className="text-prompt-control">
+            <span>Text prompt</span>
+            <input
+              data-testid="text-prompt-input"
+              type="text"
+              value={textPrompt}
+              onChange={(event) => setTextPrompt(event.target.value)}
+              placeholder="rebar"
+            />
+          </label>
+          <button
+            data-testid="start-text-inference"
+            type="button"
+            onClick={handleStartTextInference}
+            disabled={!canStartTextInference}
+          >
+            Start text inference
+          </button>
         </div>
       </header>
 
@@ -307,7 +466,7 @@ function App() {
                   preserveAspectRatio="none"
                   aria-hidden="true"
                 >
-                  {hasSavedPointPromptOverlay ? null : maskRegions.map((region) => (
+                  {hasSavedPointPromptOverlay || hasSavedTextBatchOverlay ? null : maskRegions.map((region) => (
                     <circle
                       key={region.id}
                       cx={region.cx}
@@ -334,9 +493,13 @@ function App() {
             ) : (
               <div className="empty-state">Select or upload an image to start annotating.</div>
             )}
-            {isImageLoading || isPointPromptLoading ? (
+            {isImageLoading || isPointPromptLoading || isTextBatchLoading ? (
               <div className="loading-overlay" data-testid="image-loading-indicator">
-                {isPointPromptLoading ? 'Loading saved point-prompt result...' : `Loading ${selectedLibraryImage ?? 'image'}...`}
+                {isTextBatchLoading
+                  ? 'Loading saved text-batch result...'
+                  : isPointPromptLoading
+                    ? 'Loading saved point-prompt result...'
+                    : `Loading ${selectedLibraryImage ?? 'image'}...`}
               </div>
             ) : null}
           </div>
@@ -345,6 +508,7 @@ function App() {
         <aside className="panel side-panel">
           <section className="image-browser" aria-label="Images from ./images">
             <h2>Images ({availableImages.length})</h2>
+            {isTextInferenceMode ? <p className="muted">{selectedTextBatchCount} selected for text inference.</p> : null}
             {imageLoadError ? <p className="error-message">{imageLoadError}</p> : null}
             {availableImages.length === 0 ? (
               <p className="muted">No images found in ./images.</p>
@@ -353,19 +517,41 @@ function App() {
                 {availableImages.map((filename) => {
                   const thumbnailUrl = `/source-image-thumbnails/${encodeURIComponent(filename)}`
                   const isActive = selectedLibraryImage === filename || (image?.source === 'library' && image.name === filename)
+                  const textBatchImage = textBatchImages[filename] ?? { selected: false, state: 'idle' }
 
                   return (
-                    <button
+                    <div
                       key={filename}
-                      type="button"
                       className={isActive ? 'image-option active' : 'image-option'}
                       data-testid={`image-option-${filename}`}
-                      onClick={() => handleLibraryImageSelect(filename)}
-                      aria-pressed={isActive}
                     >
-                      <img src={thumbnailUrl} alt="" loading="lazy" />
-                      <span>{filename}</span>
-                    </button>
+                      {isTextInferenceMode ? (
+                        <input
+                          aria-label={`Select ${filename} for text inference`}
+                          data-testid={`text-batch-checkbox-${filename}`}
+                          type="checkbox"
+                          checked={textBatchImage.selected}
+                          onChange={(event) => handleTextBatchCheckboxChange(filename, event.target.checked)}
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        className="image-option-button"
+                        onClick={() => handleLibraryImageSelect(filename)}
+                        aria-pressed={isActive}
+                      >
+                        <img src={thumbnailUrl} alt="" loading="lazy" />
+                        <span>{filename}</span>
+                      </button>
+                      {isTextInferenceMode && textBatchImage.message ? (
+                        <span
+                          className={textBatchImage.state === 'error' ? 'image-option-status error' : 'image-option-status'}
+                          data-testid={`text-batch-status-${filename}`}
+                        >
+                          {textBatchImage.message}
+                        </span>
+                      ) : null}
+                    </div>
                   )
                 })}
               </div>
@@ -388,6 +574,8 @@ function App() {
             )}
             {hasSavedPointPromptOverlay ? (
               <p className="muted">Saved point-prompt mask loaded.</p>
+            ) : hasSavedTextBatchOverlay || textBatchStatus ? (
+              <p className="muted">{textBatchStatus}</p>
             ) : (
               <p className="muted">
                 Mock mask visualization is shown as translucent circles and can be replaced with backend output later.

@@ -9,8 +9,10 @@ import { promisify } from 'node:util'
 const configDirectory = path.dirname(fileURLToPath(import.meta.url))
 const imageDirectory = path.resolve(configDirectory, '../images')
 const resultsDirectory = path.resolve(configDirectory, '../results')
+const sourceImageCacheDirectory = path.resolve(configDirectory, 'node_modules/.vite/source-images')
 const thumbnailDirectory = path.resolve(configDirectory, 'node_modules/.vite/source-image-thumbnails')
 const pointPromptOverlayDirectory = path.resolve(configDirectory, 'node_modules/.vite/point-prompt-overlays')
+const textBatchOverlayDirectory = path.resolve(configDirectory, 'node_modules/.vite/text-batch-overlays')
 const overlayRendererPath = path.resolve(configDirectory, 'scripts/render_point_prompt_overlay.py')
 const imageExtensions = new Set(['.avif', '.bmp', '.gif', '.heic', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
 const mimeTypes: Record<string, string> = {
@@ -34,8 +36,10 @@ interface PointPromptMetadata {
   [key: string]: unknown
 }
 
-interface PointPromptPayload {
-  metadata?: PointPromptMetadata
+type SavedResultMetadata = PointPromptMetadata
+
+interface SavedResultPayload {
+  metadata?: SavedResultMetadata
 }
 
 function isInsideDirectory(parentDirectory: string, childPath: string): boolean {
@@ -79,11 +83,67 @@ async function getThumbnail(filename: string): Promise<{ contentType: string; im
     // Generate the thumbnail below when the cache is missing or stale.
   }
 
-  await execFileAsync('sips', ['-Z', '160', '-s', 'format', 'jpeg', imagePath, '--out', thumbnailPath])
+  await execFileAsync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    imagePath,
+    '-frames:v',
+    '1',
+    '-vf',
+    'scale=160:-1',
+    thumbnailPath,
+  ])
   return { contentType: 'image/jpeg', image: await fs.readFile(thumbnailPath) }
 }
 
-async function getPointPromptResult(filename: string): Promise<{ metadata: PointPromptMetadata; overlayUrl: string }> {
+async function getSourceImage(filename: string): Promise<{ contentType: string; image: Buffer }> {
+  const extension = path.extname(filename).toLowerCase()
+  const imagePath = path.join(imageDirectory, filename)
+
+  if (extension !== '.heic') {
+    const image = await fs.readFile(imagePath)
+    return { contentType: mimeTypes[extension] ?? 'application/octet-stream', image }
+  }
+
+  await fs.mkdir(sourceImageCacheDirectory, { recursive: true })
+  const convertedPath = path.join(sourceImageCacheDirectory, `${filename}.jpg`)
+
+  try {
+    const [sourceStat, convertedStat] = await Promise.all([fs.stat(imagePath), fs.stat(convertedPath)])
+    if (convertedStat.mtimeMs >= sourceStat.mtimeMs) {
+      return { contentType: 'image/jpeg', image: await fs.readFile(convertedPath) }
+    }
+  } catch {
+    // Generate the normalized source image below when the cache is missing or stale.
+  }
+
+  await execFileAsync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    imagePath,
+    '-frames:v',
+    '1',
+    convertedPath,
+  ])
+  return { contentType: 'image/jpeg', image: await fs.readFile(convertedPath) }
+}
+
+async function getSavedOverlayResult(
+  filename: string,
+  options: {
+    resultSuffix: 'point_prompt' | 'text_batch'
+    label: string
+    overlayDirectory: string
+    overlayRoute: string
+    color: 'blue' | 'green'
+  },
+): Promise<{ metadata: SavedResultMetadata; overlayUrl: string }> {
   const extension = path.extname(filename).toLowerCase()
 
   if (!imageExtensions.has(extension)) {
@@ -101,38 +161,39 @@ async function getPointPromptResult(filename: string): Promise<{ metadata: Point
   }
 
   const imageStem = path.parse(safeFilename).name
-  const metadataPath = path.resolve(resultsDirectory, `${imageStem}_point_prompt.json`)
+  const resultFilename = `${imageStem}_${options.resultSuffix}.json`
+  const metadataPath = path.resolve(resultsDirectory, resultFilename)
   if (!isInsideDirectory(resultsDirectory, metadataPath)) {
     throw Object.assign(new Error('Invalid result path.'), { statusCode: 400 })
   }
 
-  let payload: PointPromptPayload
+  let payload: SavedResultPayload
   try {
-    payload = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as PointPromptPayload
+    payload = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as SavedResultPayload
   } catch {
-    throw Object.assign(new Error(`Missing saved point-prompt result: ${imageStem}_point_prompt.json.`), { statusCode: 404 })
+    throw Object.assign(new Error(`Missing saved ${options.label} result: ${resultFilename}.`), { statusCode: 404 })
   }
 
   const metadata = payload.metadata
   if (!metadata || typeof metadata !== 'object') {
-    throw Object.assign(new Error('Saved point-prompt result is missing metadata.'), { statusCode: 422 })
+    throw Object.assign(new Error(`Saved ${options.label} result is missing metadata.`), { statusCode: 422 })
   }
 
   if (metadata.image_filename !== safeFilename) {
-    throw Object.assign(new Error('Saved point-prompt result does not match the selected image.'), { statusCode: 422 })
+    throw Object.assign(new Error(`Saved ${options.label} result does not match the selected image.`), { statusCode: 422 })
   }
 
   if (typeof metadata.npz_filename !== 'string' || path.basename(metadata.npz_filename) !== metadata.npz_filename) {
-    throw Object.assign(new Error('Saved point-prompt result has an invalid npz filename.'), { statusCode: 422 })
+    throw Object.assign(new Error(`Saved ${options.label} result has an invalid npz filename.`), { statusCode: 422 })
   }
 
   const npzPath = path.resolve(resultsDirectory, metadata.npz_filename)
   if (!isInsideDirectory(resultsDirectory, npzPath)) {
-    throw Object.assign(new Error('Saved point-prompt result has an invalid npz path.'), { statusCode: 422 })
+    throw Object.assign(new Error(`Saved ${options.label} result has an invalid npz path.`), { statusCode: 422 })
   }
 
-  const cacheName = `${imageStem}_point_prompt_overlay.png`
-  const overlayPath = path.resolve(pointPromptOverlayDirectory, cacheName)
+  const cacheName = `${imageStem}_${options.resultSuffix}_overlay.png`
+  const overlayPath = path.resolve(options.overlayDirectory, cacheName)
   const [imageStat, metadataStat, npzStat] = await Promise.all([fs.stat(imagePath), fs.stat(metadataPath), fs.stat(npzPath)])
   const newestInputMtime = Math.max(imageStat.mtimeMs, metadataStat.mtimeMs, npzStat.mtimeMs)
 
@@ -141,11 +202,11 @@ async function getPointPromptResult(filename: string): Promise<{ metadata: Point
     const overlayStat = await fs.stat(overlayPath)
     shouldRender = overlayStat.mtimeMs < newestInputMtime
   } catch {
-    shouldRender = true
+    // Render when the cache is missing.
   }
 
   if (shouldRender) {
-    await fs.mkdir(pointPromptOverlayDirectory, { recursive: true })
+    await fs.mkdir(options.overlayDirectory, { recursive: true })
     await execFileAsync('python3', [
       overlayRendererPath,
       '--image',
@@ -154,13 +215,35 @@ async function getPointPromptResult(filename: string): Promise<{ metadata: Point
       npzPath,
       '--output',
       overlayPath,
+      '--color',
+      options.color,
     ])
   }
 
   return {
     metadata,
-    overlayUrl: `/point-prompt-overlays/${encodeURIComponent(cacheName)}?v=${Math.round(newestInputMtime)}`,
+    overlayUrl: `${options.overlayRoute}/${encodeURIComponent(cacheName)}?v=${Math.round(newestInputMtime)}`,
   }
+}
+
+async function getPointPromptResult(filename: string): Promise<{ metadata: SavedResultMetadata; overlayUrl: string }> {
+  return getSavedOverlayResult(filename, {
+    resultSuffix: 'point_prompt',
+    label: 'point-prompt',
+    overlayDirectory: pointPromptOverlayDirectory,
+    overlayRoute: '/point-prompt-overlays',
+    color: 'blue',
+  })
+}
+
+async function getTextBatchResult(filename: string): Promise<{ metadata: SavedResultMetadata; overlayUrl: string }> {
+  return getSavedOverlayResult(filename, {
+    resultSuffix: 'text_batch',
+    label: 'text-batch',
+    overlayDirectory: textBatchOverlayDirectory,
+    overlayRoute: '/text-batch-overlays',
+    color: 'green',
+  })
 }
 
 // https://vite.dev/config/
@@ -197,10 +280,10 @@ export default defineConfig({
                 return
               }
 
-              const imagePath = path.join(imageDirectory, filename)
-              const image = await fs.readFile(imagePath)
-              response.setHeader('Content-Type', mimeTypes[extension] ?? 'application/octet-stream')
-              response.end(image)
+              const sourceImage = await getSourceImage(filename)
+              response.setHeader('Content-Type', sourceImage.contentType)
+              response.setHeader('Cache-Control', 'public, max-age=300')
+              response.end(sourceImage.image)
             } catch {
               response.statusCode = 404
               response.end('Not found')
@@ -253,6 +336,28 @@ export default defineConfig({
             return
           }
 
+          if (requestUrl.startsWith('/api/text-batch-result')) {
+            const url = new URL(requestUrl, 'http://localhost')
+            const image = url.searchParams.get('image')
+
+            if (!image) {
+              sendJson(response, 400, { error: 'Missing image query parameter.' })
+              return
+            }
+
+            try {
+              const result = await getTextBatchResult(image)
+              sendJson(response, 200, result)
+            } catch (error) {
+              const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+                ? Number((error as { statusCode: unknown }).statusCode)
+                : 500
+              const message = error instanceof Error ? error.message : 'Unable to load saved text-batch result.'
+              sendJson(response, Number.isFinite(statusCode) ? statusCode : 500, { error: message })
+            }
+            return
+          }
+
           if (requestUrl.startsWith('/point-prompt-overlays/')) {
             try {
               const encodedFilename = requestUrl.slice('/point-prompt-overlays/'.length).split('?')[0]
@@ -260,6 +365,28 @@ export default defineConfig({
               const overlayPath = path.resolve(pointPromptOverlayDirectory, filename)
 
               if (path.extname(filename).toLowerCase() !== '.png' || !isInsideDirectory(pointPromptOverlayDirectory, overlayPath)) {
+                response.statusCode = 404
+                response.end('Not found')
+                return
+              }
+
+              response.setHeader('Content-Type', 'image/png')
+              response.setHeader('Cache-Control', 'public, max-age=300')
+              response.end(await fs.readFile(overlayPath))
+            } catch {
+              response.statusCode = 404
+              response.end('Not found')
+            }
+            return
+          }
+
+          if (requestUrl.startsWith('/text-batch-overlays/')) {
+            try {
+              const encodedFilename = requestUrl.slice('/text-batch-overlays/'.length).split('?')[0]
+              const filename = path.basename(decodeURIComponent(encodedFilename))
+              const overlayPath = path.resolve(textBatchOverlayDirectory, filename)
+
+              if (path.extname(filename).toLowerCase() !== '.png' || !isInsideDirectory(textBatchOverlayDirectory, overlayPath)) {
                 response.statusCode = 404
                 response.end('Not found')
                 return
