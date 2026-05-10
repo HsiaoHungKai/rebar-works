@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "0f1eb0d0b3b03ec5",
+        "id": "118779bf828588f3",
         "type": "tabs",
         "children": [
           {
-            "id": "d53578f1067edf3f",
+            "id": "a2087a5b6bba9520",
             "type": "leaf",
             "state": {
               "type": "empty",
@@ -179,10 +179,12 @@
       "bases:Create new base": false
     }
   },
-  "active": "293df78ebe812a1a",
+  "active": "a2087a5b6bba9520",
   "lastOpenFiles": [
-    "演講心得：AI 時代下的領導與溝通.md",
+    "sam3-inference/AGENTS.md",
+    "sam3-inference/point_prompt.md",
     "sam3-inference/twccli_tutorial.md",
+    "演講心得：AI 時代下的領導與溝通.md",
     "rebar-works/Welcome.md",
     "sam3-inference/results/IMG_7616_rebar.npz",
     "sam3-inference/results/IMG_7616_rebar.json",
@@ -194,7 +196,6 @@
     "sam3-inference/results/IMG_7566_rebar.json",
     "sam3-inference/results/IMG_7566_point_prompt_test.npz",
     "sam3-inference/results",
-    "sam3-inference/AGENTS.md",
     "sam3-inference/twcc_command.md"
   ]
 }

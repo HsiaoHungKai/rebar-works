@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['rebar']
+
+roboflow:
+  workspace: hungkais-workspace
+  project: test_dahanxi-mhbq7
+  version: 8
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/hungkais-workspace/test_dahanxi-mhbq7/dataset/8
