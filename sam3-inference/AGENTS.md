@@ -24,6 +24,16 @@ Run the TWCC workflow when `.env` is configured with `HF_TOKEN`, `PEM_LOCATION`,
 ./run_sam3_on_twcc.sh
 ```
 
+Run the local React frontend for point-prompt annotation:
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Then open `http://127.0.0.1:5173` in your browser (Safari is supported via WebKit checks).
+
 ## Coding Style & Naming Conventions
 Follow the existing style in `sam3_inference.py`: 4-space indentation, `snake_case` for functions and variables, `PascalCase` for classes, and type hints on public functions. Keep modules focused; this repo currently favors one clear script over a package hierarchy. Preserve shell strict mode in Bash (`set -euo pipefail`) and keep helper names verb-first, such as `require_command` or `retry_sshpass_cmd`. No formatter or linter is configured, so keep edits small and internally consistent.
 

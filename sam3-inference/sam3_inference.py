@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Union, List, Optional, Tuple, Dict
+from typing import Union, List, Optional, Tuple, Dict, Any
 from PIL import Image
 from transformers import Sam3Model, Sam3Processor, Sam3TrackerModel, Sam3TrackerProcessor
 import requests
@@ -357,7 +357,7 @@ class SAM3Inference:
                     prompt_type="point_prompt",
                     input_points=input_points,
                     input_labels=input_labels,
-                    output_label="point_prompt_test"
+                    output_label="point_prompt"
                 )
                 print(f"Saved point prompt result: {output_path.with_suffix('.npz')}")
 
@@ -430,6 +430,268 @@ def get_image_files(directory: str) -> List[Path]:
     ]
     
     return sorted(image_files)
+
+
+def parse_json_list_argument(raw_value: str, argument_name: str) -> List:
+    """Parse a CLI JSON argument and enforce a list payload."""
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{argument_name} must be valid JSON: {exc}") from exc
+
+    if not isinstance(parsed, list):
+        raise ValueError(f"{argument_name} must be a JSON list")
+
+    return parsed
+
+
+def normalize_point_cli_inputs(input_points: List, input_labels: List) -> Tuple[List, List]:
+    """Normalize point-prompt CLI payloads into model-compatible list forms."""
+    if (
+        len(input_points) == 2
+        and all(isinstance(value, (int, float)) for value in input_points)
+    ):
+        input_points = [input_points]
+
+    if not input_points:
+        raise ValueError("--input-points must contain at least one point")
+    if not input_labels:
+        raise ValueError("--input-labels must contain at least one label")
+
+    return input_points, input_labels
+
+
+def point_prompt_json_example() -> str:
+    """Return the preferred interactive point-prompt JSON example."""
+    return (
+        '{"image":"./images/IMG_7578.HEIC",'
+        '"positive":[[538,1077],[3154,852]],'
+        '"negative":[[1021,2243]]}'
+    )
+
+
+def print_point_prompt_help():
+    """Print instructions for the interactive point-prompt loop."""
+    print("\nHow to run point prompts:")
+    print("  Type one JSON object per inference. The image value must be a full or relative path.")
+    print("  Positive points mark the object you want to keep.")
+    print("  Negative points mark nearby regions you want to exclude.")
+    print("  Each point is [x, y] in original image pixels.")
+    print("\nExamples:")
+    print(f"  {point_prompt_json_example()}")
+    print('  {"image":"./images/IMG_7617.HEIC","positive":[[527,1083]]}')
+    print("\nAlternative format:")
+    print('  {"image":"./images/IMG_7578.HEIC","points":[[538,1077],[1021,2243]],"labels":[1,0]}')
+    print("\nCommands:")
+    print("  help               Print this guide")
+    print("  quit, exit, q      Exit interactive mode\n")
+
+
+def parse_point_prompt_points(point_values: Any, field_name: str) -> List[List[Union[int, float]]]:
+    """Validate an interactive positive/negative point list."""
+    if point_values is None:
+        return []
+    if not isinstance(point_values, list):
+        raise ValueError(f'"{field_name}" must be a list of [x, y] points.')
+
+    points = []
+    for index, point in enumerate(point_values):
+        if not isinstance(point, list) or len(point) != 2:
+            raise ValueError(
+                f'"{field_name}" point #{index + 1} must be [x, y], got {point!r}.'
+            )
+
+        x, y = point
+        if (
+            isinstance(x, bool)
+            or isinstance(y, bool)
+            or not isinstance(x, (int, float))
+            or not isinstance(y, (int, float))
+        ):
+            raise ValueError(
+                f'"{field_name}" point #{index + 1} must use numeric x and y values, '
+                f"got {point!r}."
+            )
+
+        points.append([x, y])
+
+    return points
+
+
+def validate_point_bounds(
+    points: List[List[Union[int, float]]],
+    image_path: Path,
+    image_size: Tuple[int, int]
+):
+    """Raise a detailed error when a point is outside the image."""
+    width, height = image_size
+    for index, point in enumerate(points):
+        x, y = point
+        if x < 0 or y < 0 or x >= width or y >= height:
+            raise ValueError(
+                f"Point #{index + 1} {point} is outside {image_path}. "
+                f"Valid x range is 0 to {width - 1}; valid y range is 0 to {height - 1}."
+            )
+
+
+def load_image_size_for_point_prompt(image_path: Path) -> Tuple[int, int]:
+    """Validate an image path and return the image dimensions."""
+    if not image_path.exists():
+        raise ValueError(
+            f"Image path not found: {image_path}. "
+            "Interactive mode uses path-only image input, so provide a valid full or relative path."
+        )
+    if not image_path.is_file():
+        raise ValueError(f"Image path is not a file: {image_path}")
+
+    try:
+        with Image.open(image_path) as image:
+            return image.size
+    except Exception as exc:
+        raise ValueError(
+            f"File exists but could not be opened as an image: {image_path}. Error: {exc}"
+        ) from exc
+
+
+def parse_interactive_point_prompt_request(
+    raw_value: str,
+    inference_engine: SAM3Inference
+) -> Tuple[Path, List, List]:
+    """Parse and validate one interactive point-prompt JSON object."""
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Input must be one JSON object. JSON parse error: {exc}. "
+            f"Example: {point_prompt_json_example()}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Input must be one JSON object, not {type(payload).__name__}. "
+            f"Example: {point_prompt_json_example()}"
+        )
+
+    image_value = payload.get("image")
+    if not isinstance(image_value, str) or not image_value.strip():
+        raise ValueError('"image" is required and must be a full or relative image path string.')
+
+    image_path = Path(image_value.strip())
+    image_size = load_image_size_for_point_prompt(image_path)
+
+    uses_named_prompts = "positive" in payload or "negative" in payload
+    uses_points_labels = "points" in payload or "labels" in payload
+
+    if uses_named_prompts and uses_points_labels:
+        raise ValueError('Use either "positive"/"negative" or "points"/"labels", not both.')
+
+    if uses_points_labels:
+        if "points" not in payload:
+            raise ValueError('"points" is required when using "labels".')
+        if "labels" not in payload:
+            raise ValueError('"labels" is required when using "points".')
+
+        if not isinstance(payload["points"], list):
+            raise ValueError('"points" must be a JSON list.')
+        if not isinstance(payload["labels"], list):
+            raise ValueError('"labels" must be a JSON list.')
+
+        try:
+            input_points, input_labels = normalize_point_cli_inputs(
+                payload["points"],
+                payload["labels"]
+            )
+            normalized_points, normalized_labels = inference_engine._normalize_point_inputs(
+                input_points=input_points,
+                input_labels=input_labels
+            )
+        except (TypeError, IndexError, ValueError) as exc:
+            raise ValueError(f"Invalid points/labels: {exc}") from exc
+
+        flat_points = normalized_points[0][0]
+        flat_labels = normalized_labels[0][0]
+        for index, label in enumerate(flat_labels):
+            if label not in (0, 1):
+                raise ValueError(f"Label #{index + 1} must be 1 for positive or 0 for negative.")
+
+        validate_point_bounds(flat_points, image_path, image_size)
+        return image_path, input_points, input_labels
+
+    positive_points = parse_point_prompt_points(payload.get("positive"), "positive")
+    negative_points = parse_point_prompt_points(payload.get("negative"), "negative")
+    input_points = positive_points + negative_points
+    input_labels = [1] * len(positive_points) + [0] * len(negative_points)
+
+    if not input_points:
+        raise ValueError('At least one "positive" or "negative" point is required.')
+
+    validate_point_bounds(input_points, image_path, image_size)
+    return image_path, input_points, input_labels
+
+
+def interactive_point_prompt_mode(
+    inference_engine: SAM3Inference,
+    output_dir: str,
+    threshold: float,
+    mask_threshold: float
+):
+    """Interactive loop for repeated point-prompt inference from JSON requests."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    print("\n" + "="*60)
+    print("Interactive Point Prompt Mode - Model loaded and ready!")
+    print("="*60)
+    print_point_prompt_help()
+
+    while True:
+        try:
+            user_input = input("point-prompt> ").strip()
+
+            if not user_input:
+                continue
+
+            command = user_input.lower()
+
+            if command in ['quit', 'exit', 'q']:
+                print("\nExiting interactive point prompt mode.")
+                break
+
+            if command == 'help':
+                print_point_prompt_help()
+                continue
+
+            try:
+                image_path, input_points, input_labels = parse_interactive_point_prompt_request(
+                    user_input,
+                    inference_engine
+                )
+            except ValueError as e:
+                print(f"Invalid request: {e}")
+                continue
+
+            print(f"\nRunning point prompt inference on {image_path}...")
+            print(f"Points: {input_points}")
+            print(f"Labels: {input_labels}")
+            point_result = inference_engine.point_prompt_infer_single(
+                image_path=image_path,
+                input_points=input_points,
+                input_labels=input_labels,
+                output_dir=output_path,
+                threshold=threshold,
+                mask_threshold=mask_threshold
+            )
+            masks = point_result[0][0]
+            scores = point_result[0][2]
+            print(f"Masks shape: {masks.shape}")
+            print(f"Scores: {scores}\n")
+
+        except KeyboardInterrupt:
+            print("\n\nReceived interrupt signal. Exiting...")
+            break
+        except EOFError:
+            print("\nExiting interactive point prompt mode.")
+            break
 
 
 def save_result(
@@ -606,7 +868,8 @@ def batch_infer_directory(
                 model_id=model_id,
                 threshold=threshold,
                 mask_threshold=mask_threshold,
-                processing_time=per_image_time
+                processing_time=per_image_time,
+                output_label="text_batch"
             )
             # result is now a list [masks, boxes, scores]
             num_objects = len(result[2]) if len(result) > 2 and isinstance(result[2], np.ndarray) else 0
@@ -738,29 +1001,47 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with required arguments
+  # Text batch inference (default mode)
   python sam3_inference.py --image-dir ./images --prompt "dog ear"
-  
-  # Specify output directory
-  python sam3_inference.py --image-dir ./images --prompt "cat" --output-dir ./results
-  
-  # Adjust inference parameters
-  python sam3_inference.py --image-dir ./images --prompt "person" --threshold 0.7 --batch-size 8
+   
+  # Explicitly specify text mode
+  python sam3_inference.py --mode text-batch --image-dir ./images --prompt "cat"
+   
+  # Interactive point prompt mode (loads the model once, then waits for commands)
+  python sam3_inference.py --mode point-prompt --output-dir ./results
+
+  # One-shot point prompt mode (requires --no-interactive, --point-image, and --input-points)
+  python sam3_inference.py --mode point-prompt --no-interactive --point-image ./images/IMG_7578.HEIC --input-points "[1094, 1021]"
+
+Interactive point-prompt input:
+  Type one JSON object per inference:
+  {"image":"./images/IMG_7578.HEIC","positive":[[538,1077],[3154,852]],"negative":[[1021,2243]]}
+
+  Positive points mark the object to keep; negative points mark regions to exclude.
+  Use help for examples, or quit/exit/q to exit.
         """
+    )
+
+    parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['text-batch', 'point-prompt'],
+        default='text-batch',
+        help='Inference mode (default: text-batch)'
     )
     
     parser.add_argument(
         '--image-dir',
         type=str,
-        required=True,
-        help='Directory containing images to process'
+        default=None,
+        help='Directory containing images to process (required for --mode text-batch)'
     )
     
     parser.add_argument(
         '--prompt',
         type=str,
-        required=True,
-        help='Initial text prompt for segmentation (e.g., "dog", "ear", "person")'
+        default=None,
+        help='Text prompt for segmentation (required for --mode text-batch)'
     )
     
     parser.add_argument(
@@ -807,14 +1088,60 @@ Examples:
     parser.add_argument(
         '--no-interactive',
         action='store_true',
-        help='Exit after batch processing (do not enter interactive mode)'
+        help='Exit after text-batch processing, or run one-shot point-prompt inference'
+    )
+
+    parser.add_argument(
+        '--point-image',
+        type=str,
+        default=None,
+        help='Path to one image for one-shot point prompt inference (required with --mode point-prompt --no-interactive)'
+    )
+
+    parser.add_argument(
+        '--input-points',
+        type=str,
+        default=None,
+        help='Point coordinates as JSON list, e.g. "[[1094, 1021]]" (required with --mode point-prompt --no-interactive)'
+    )
+
+    parser.add_argument(
+        '--input-labels',
+        type=str,
+        default='[1]',
+        help='Point labels as JSON list, e.g. "[1]" (default: [1])'
     )
     
     args = parser.parse_args()
+
+    parsed_points: Optional[List] = None
+    parsed_labels: Optional[List] = None
+    if args.mode == 'text-batch':
+        if args.image_dir is None:
+            parser.error("--image-dir is required when --mode text-batch")
+        if not args.prompt:
+            parser.error("--prompt is required when --mode text-batch")
+    elif args.no_interactive:
+        if args.point_image is None:
+            parser.error("--point-image is required when --mode point-prompt --no-interactive")
+        if args.input_points is None:
+            parser.error("--input-points is required when --mode point-prompt --no-interactive")
+
+        try:
+            parsed_points = parse_json_list_argument(args.input_points, "--input-points")
+            parsed_labels = parse_json_list_argument(args.input_labels, "--input-labels")
+            parsed_points, parsed_labels = normalize_point_cli_inputs(parsed_points, parsed_labels)
+        except ValueError as e:
+            parser.error(str(e))
     
-    # Set output directory to image directory if not specified
+    # Set output directory based on selected mode when not specified
     if args.output_dir is None:
-        args.output_dir = args.image_dir
+        if args.mode == 'text-batch':
+            args.output_dir = args.image_dir
+        elif args.point_image is not None:
+            args.output_dir = str(Path(args.point_image).parent)
+        else:
+            args.output_dir = "./results"
     
     try:
         # Initialize model (loads once)
@@ -822,55 +1149,71 @@ Examples:
         print("SAM3 Interactive Batch Inference")
         print("="*60 + "\n")
         
+
         inference_engine = SAM3Inference(
             model_id=args.model_id,
             half_precision=not args.no_fp16
         )
         
-        # Run initial batch inference
-        # image_paths, loaded_images, results = batch_infer_directory(
-        #     inference_engine=inference_engine,
-        #     image_dir=args.image_dir,
-        #     prompt=args.prompt,
-        #     output_dir=args.output_dir,
-        #     batch_size=args.batch_size,
-        #     threshold=args.threshold,
-        #     mask_threshold=args.mask_threshold,
-        #     model_id=args.model_id
-        # )
+        if args.mode == 'text-batch':
 
-        output_path = Path(args.output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+            image_paths, loaded_images, _ = batch_infer_directory(
+                inference_engine=inference_engine,
+                image_dir=args.image_dir,
+                prompt=args.prompt,
+                output_dir=args.output_dir,
+                batch_size=args.batch_size,
+                threshold=args.threshold,
+                mask_threshold=args.mask_threshold,
+                model_id=args.model_id
+            )
 
-        test_image_path = Path("./images/IMG_7578.HEIC")
-        test_points = [
-            [
-                1094,
-                1021
-            ]
-        ]
-        test_labels = [1]
+            # if loaded_images and not args.no_interactive:
+            #     interactive_mode(
+            #         inference_engine=inference_engine,
+            #         image_paths=image_paths,
+            #         loaded_images=loaded_images,
+            #         output_dir=args.output_dir,
+            #         batch_size=args.batch_size,
+            #         threshold=args.threshold,
+            #         mask_threshold=args.mask_threshold,
+            #         model_id=args.model_id
+            #     )
+        else:
+            output_path = Path(args.output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
 
-        print("\n" + "="*60)
-        print("Running point prompt test")
-        print("="*60)
-        print(f"Image: {test_image_path}")
-        print(f"Points: {test_points}")
-        print(f"Labels: {test_labels}")
+            if not args.no_interactive:
+                interactive_point_prompt_mode(
+                    inference_engine=inference_engine,
+                    output_dir=args.output_dir,
+                    threshold=args.threshold,
+                    mask_threshold=args.mask_threshold
+                )
+                return 0
 
-        point_result = inference_engine.point_prompt_infer_single(
-            image_path=test_image_path,
-            input_points=test_points,
-            input_labels=test_labels,
-            output_dir=output_path,
-            threshold=args.threshold,
-            mask_threshold=args.mask_threshold
-        )
+            point_image_path = Path(args.point_image)
 
-        masks = point_result[0][0]
-        scores = point_result[0][2]
-        print(f"Masks shape: {masks.shape}")
-        print(f"Scores: {scores}")
+            print("\n" + "="*60)
+            print("Running point prompt inference")
+            print("="*60)
+            print(f"Image: {point_image_path}")
+            print(f"Points: {parsed_points}")
+            print(f"Labels: {parsed_labels}")
+
+            point_result = inference_engine.point_prompt_infer_single(
+                image_path=point_image_path,
+                input_points=parsed_points if parsed_points is not None else [],
+                input_labels=parsed_labels if parsed_labels is not None else [],
+                output_dir=output_path,
+                threshold=args.threshold,
+                mask_threshold=args.mask_threshold
+            )
+
+            masks = point_result[0][0]
+            scores = point_result[0][2]
+            print(f"Masks shape: {masks.shape}")
+            print(f"Scores: {scores}")
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")
