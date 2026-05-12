@@ -139,7 +139,7 @@ execution_mode() {
     TRAIN_IMGSZ="${TRAIN_IMGSZ:-640}"
     TRAIN_BATCH="${TRAIN_BATCH:-16}"
     TRAIN_DEVICE="${TRAIN_DEVICE:-0}"
-    TRAIN_NAME="${TRAIN_NAME:-yolo26l_sam3_rebar_v1}"
+    TRAIN_NAME="${TRAIN_NAME:-yolo26l_sam3_rebar_v2}"
     TRAIN_PATIENCE="${TRAIN_PATIENCE:-30}"
     TRAIN_WORKERS="${TRAIN_WORKERS:-0}"
 
