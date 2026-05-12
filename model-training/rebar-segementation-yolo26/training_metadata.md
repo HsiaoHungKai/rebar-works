@@ -11,8 +11,8 @@
 
 | Training version | Automation script | Training entrypoint | Dataset version | Model | Dataset config | Epochs | Image size | Batch size | Device | Patience | Workers | Run name |
 | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
-| v1 | `train_rebar_seg_yolo26.sh` | `train.py` | `dataset-v1` | `yolo26l-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_without_open_source_rebar_v1/data.yaml` | 100 | 640 | 4 | `0` | 30 | 0 | `rebar-segementation-yolo26/train_rebar_seg_yolo26.sh` |
-| v2 | `train_rebar_seg_yolo26_v2.sh` | `train.py` | `dataset-v1` | `yolo26l-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_without_open_source_rebar_v1/data.yaml` | 126 | 640 | 16 | `0` | 30 | 0 | `rebar-segementation-yolo26/train_rebar_seg_yolo26_v2.sh` |
+| v1 | `scripts/train_rebar_seg_yolo26_v1.sh` | `train.py` | `dataset-v1` | `yolo26l-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_without_open_source_rebar_v1/data.yaml` | 100 | 640 | 4 | `0` | 30 | 0 | `yolo26x_sam3_rebar_v1` |
+| v2 | `scripts/train_rebar_seg_yolo26_v2.sh` | `train.py` | `dataset-v1` | `yolo26l-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_without_open_source_rebar_v1/data.yaml` | 126 | 640 | 16 | `0` | 30 | 0 | `yolo26x_sam3_rebar_v2` |
 | v3 | `scripts/train_rebar_seg_yolo26_v3.sh` | `train.py` | `dataset-v2` | `yolo26x-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_with_open_source_rebar/data.yaml` | 100 | 640 | 16 | `0` | 30 | 0 | `yolo26x_sam3_rebar_v3` |
 
 
