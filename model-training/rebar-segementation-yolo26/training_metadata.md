@@ -14,15 +14,6 @@
 | v2 | `train_rebar_seg_yolo26_v2.sh` | `train.py` | `dataset-v1` | `yolo26l-seg.pt` | `${REMOTE_WORKDIR}/datasets/sam3_annotation_without_open_source_rebar_v1/data.yaml` | 200 | 640 | 16 | `0` | 30 | 0 | `rebar-segementation-yolo26/train_rebar_seg_yolo26_v2.sh` |
 
 
-## Dataset Version Details
-
-### dataset-v1
-
-- Source image folders:
-  - `https://drive.google.com/drive/u/0/folders/1Y4YpGXMLsSpoMEY_lcTB--LBngSEhZep`
-  - `https://drive.google.com/drive/u/0/folders/1u65TAqbydlc8_T5WVGOroPfbsbdes0Ya`
-  - `https://drive.google.com/drive/u/0/folders/1L9SVSl0S0GDxPh3EFxshzXy29wocjC6w`
-
 ## Execution Environment
 
 - TWCC container name default: `yolo26-train`
