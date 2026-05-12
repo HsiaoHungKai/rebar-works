@@ -1,0 +1,4 @@
+interface:
+  display_name: "TWCC Python Runner"
+  short_description: "Generate TWCC scripts for Python jobs"
+  default_prompt: "Use $twcc-python-runner to create a TWCC CCS shell script that runs my Python entrypoint and downloads the results."

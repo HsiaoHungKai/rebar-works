@@ -1,0 +1,15 @@
+datasets/sam3_annotation_without_open_source_rebar_v1/train/images/*
+datasets/sam3_annotation_without_open_source_rebar_v1/train/labels/*
+datasets/sam3_annotation_without_open_source_rebar_v1/valid/images/*
+datasets/sam3_annotation_without_open_source_rebar_v1/valid/labels/*
+datasets/sam3_annotation_without_open_source_rebar_v1/test/images/*
+datasets/sam3_annotation_without_open_source_rebar_v1/test/labels/*
+
+datasets/sam3_annotation_with_open_source_rebar/train/images/*
+datasets/sam3_annotation_with_open_source_rebar/train/labels/*
+datasets/sam3_annotation_with_open_source_rebar/valid/images/*
+datasets/sam3_annotation_with_open_source_rebar/valid/labels/*
+datasets/sam3_annotation_with_open_source_rebar/test/images/*
+datasets/sam3_annotation_with_open_source_rebar/test/labels/*
+
+rebar-segementation-yolo26/results/*

@@ -1,6 +1,0 @@
-train/images/*
-train/labels/*
-valid/images/*
-valid/labels/*
-test/images/*
-test/labels/*
