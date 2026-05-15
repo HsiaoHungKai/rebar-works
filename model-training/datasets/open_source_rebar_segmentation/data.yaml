@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 2
+names: ['rebar', 'rebars']
+
+roboflow:
+  workspace: hungkais-workspace
+  project: rebar-segmentation-hkccg
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/hungkais-workspace/rebar-segmentation-hkccg/dataset/1
