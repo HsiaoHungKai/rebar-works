@@ -4,7 +4,9 @@
 # train_rebar_seg_yolo26_v3.sh - Automated TWCC CCS Container Setup and YOLO Training
 #
 # Usage:
+#   DATASET_SOURCES="ds-a-open-rebar-v1 ds-b-custom-sam3-v1 ds-c-open-sam3-v1" \
 #   ./rebar-segementation-yolo26/scripts/train_rebar_seg_yolo26_v3.sh
+#   DATASET_SOURCES="ds-a-open-rebar-v1 ds-b-custom-sam3-v1 ds-c-open-sam3-v1" \
 #   ./rebar-segementation-yolo26/scripts/train_rebar_seg_yolo26_v3.sh --execute
 ###############################################################################
 
@@ -127,15 +129,18 @@ execution_mode() {
     require_command sshpass
 
     [[ -f "${REPO_ROOT}/train.py" ]] || fail "train.py not found"
-    [[ -d "${WORKSPACE_ROOT}/datasets/sam3_annotation_with_open_source_rebar" ]] || fail "dataset directory not found"
+    [[ -f "${REPO_ROOT}/dataset.py" ]] || fail "dataset.py not found"
 
     TWCC_CONTAINER_NAME="${TWCC_CONTAINER_NAME:-yolo26-train}"
     TWCC_IMAGE="${TWCC_IMAGE:-pytorch-26.02-py3:latest}"
     TWCC_GPU="${TWCC_GPU:-1}"
     REMOTE_WORKDIR="${REMOTE_WORKDIR:-/tmp/rebar-training}"
+    DATASET_SOURCES="${DATASET_SOURCES:-}"
+    DATASET_OUTPUT_NAME="${DATASET_OUTPUT_NAME:-combined-rebar}"
+    [[ -n "$DATASET_SOURCES" ]] || fail "DATASET_SOURCES is required. Example: DATASET_SOURCES='ds-a-open-rebar-v1 ds-b-custom-sam3-v1'"
 
     TRAIN_MODEL="${TRAIN_MODEL:-yolo26x-seg.pt}"
-    TRAIN_DATA="${TRAIN_DATA:-${REMOTE_WORKDIR}/datasets/sam3_annotation_with_open_source_rebar/data.yaml}"
+    TRAIN_DATA="${TRAIN_DATA:-${REMOTE_WORKDIR}/datasets/${DATASET_OUTPUT_NAME}/data.yaml}"
     TRAIN_EPOCHS="${TRAIN_EPOCHS:-100}"
     TRAIN_IMGSZ="${TRAIN_IMGSZ:-640}"
     TRAIN_BATCH="${TRAIN_BATCH:-16}"
@@ -179,6 +184,8 @@ execution_mode() {
     log "  Image: ${TWCC_IMAGE}"
     log "  GPU Count: ${TWCC_GPU}"
     log "  Remote Workdir: ${REMOTE_WORKDIR}"
+    log "  Dataset Sources: ${DATASET_SOURCES}"
+    log "  Dataset Output: ${DATASET_OUTPUT_NAME}"
     log "  Model: ${TRAIN_MODEL}"
     log "  Data: ${TRAIN_DATA}"
     log "  Epochs: ${TRAIN_EPOCHS}"
@@ -190,6 +197,21 @@ execution_mode() {
     log "  Workers: ${TRAIN_WORKERS}"
 
     cd "$WORKSPACE_ROOT"
+
+    read -r -a DATASET_SOURCE_NAMES <<< "$DATASET_SOURCES"
+    DATASET_SOURCE_ARGS=""
+    for DATASET_SOURCE_NAME in "${DATASET_SOURCE_NAMES[@]}"; do
+        if [[ -d "$DATASET_SOURCE_NAME" ]]; then
+            LOCAL_DATASET_PATH="$DATASET_SOURCE_NAME"
+        elif [[ -d "datasets/$DATASET_SOURCE_NAME" ]]; then
+            LOCAL_DATASET_PATH="datasets/$DATASET_SOURCE_NAME"
+        else
+            fail "dataset source not found: ${DATASET_SOURCE_NAME}"
+        fi
+
+        DATASET_BASENAME="$(basename "$LOCAL_DATASET_PATH")"
+        DATASET_SOURCE_ARGS+=" $(shell_quote "${REMOTE_WORKDIR}/datasets/${DATASET_BASENAME}")"
+    done
 
     log "==================================================================="
     log "Step 1: Creating TWCC CCS container"
@@ -276,12 +298,21 @@ execution_mode() {
 
     retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp "${SCP_BASE[@]}" \
         rebar-segementation-yolo26/train.py \
+        rebar-segementation-yolo26/dataset.py \
         rebar-segementation-yolo26/requirements.txt \
         "${REMOTE_TARGET}:$(shell_quote "$REMOTE_WORKDIR")/rebar-segementation-yolo26/"
 
-    retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp "${SCP_BASE[@]}" -r \
-        datasets/sam3_annotation_with_open_source_rebar \
-        "${REMOTE_TARGET}:$(shell_quote "$REMOTE_WORKDIR")/datasets/"
+    for DATASET_SOURCE_NAME in "${DATASET_SOURCE_NAMES[@]}"; do
+        if [[ -d "$DATASET_SOURCE_NAME" ]]; then
+            LOCAL_DATASET_PATH="$DATASET_SOURCE_NAME"
+        else
+            LOCAL_DATASET_PATH="datasets/$DATASET_SOURCE_NAME"
+        fi
+
+        retry_sshpass_cmd sshpass -p "$TWCC_PASSWORD" scp "${SCP_BASE[@]}" -r \
+            "$LOCAL_DATASET_PATH" \
+            "${REMOTE_TARGET}:$(shell_quote "$REMOTE_WORKDIR")/datasets/"
+    done
 
     log "==================================================================="
     log "Step 5: Installing dependencies and running training"
@@ -306,6 +337,11 @@ python - <<'PY'
 import cv2
 print(f"OpenCV import OK: {cv2.__version__}")
 PY
+
+python rebar-segementation-yolo26/dataset.py \\
+    --sources${DATASET_SOURCE_ARGS} \\
+    --output $(shell_quote "${REMOTE_WORKDIR}/datasets/${DATASET_OUTPUT_NAME}") \\
+    --overwrite
 
 python rebar-segementation-yolo26/train.py \\
     --model $(shell_quote "$TRAIN_MODEL") \\
