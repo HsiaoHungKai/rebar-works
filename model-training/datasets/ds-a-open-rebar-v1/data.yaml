@@ -8,6 +8,6 @@ names: ['rebar', 'rebars']
 roboflow:
   workspace: hungkais-workspace
   project: rebar-segmentation-hkccg
-  version: 1
+  version: 2
   license: CC BY 4.0
-  url: https://universe.roboflow.com/hungkais-workspace/rebar-segmentation-hkccg/dataset/1
+  url: https://universe.roboflow.com/hungkais-workspace/rebar-segmentation-hkccg/dataset/2
