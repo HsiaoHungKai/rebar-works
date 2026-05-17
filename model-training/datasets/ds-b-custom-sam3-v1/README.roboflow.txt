@@ -1,8 +1,8 @@
 
-Rebar Segmentation - v5 2026-05-17 11:40am
+test_dahanxi - v12 2026-05-17 11:42am
 ==============================
 
-This dataset was exported via roboflow.com on May 17, 2026 at 3:41 AM GMT
+This dataset was exported via roboflow.com on May 17, 2026 at 3:43 AM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -17,12 +17,12 @@ visit https://github.com/roboflow/notebooks
 
 To find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com
 
-The dataset includes 1031 images.
-Rebar are annotated in YOLO26 format.
+The dataset includes 62 images.
+Intersection are annotated in YOLO26 format.
 
 The following pre-processing was applied to each image:
 * Auto-orientation of pixel data (with EXIF-orientation stripping)
-* Resize to 432x432 (Stretch)
+* Resize to 512x512 (Stretch)
 * Auto-contrast via adaptive equalization
 
 No image augmentation techniques were applied.

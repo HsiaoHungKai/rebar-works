@@ -7,7 +7,7 @@ names: ['rebar']
 
 roboflow:
   workspace: hungkais-workspace
-  project: rebar-segmentation-hkccg
-  version: 5
+  project: test_dahanxi-mhbq7
+  version: 13
   license: CC BY 4.0
-  url: https://universe.roboflow.com/hungkais-workspace/rebar-segmentation-hkccg/dataset/5
+  url: https://universe.roboflow.com/hungkais-workspace/test_dahanxi-mhbq7/dataset/13

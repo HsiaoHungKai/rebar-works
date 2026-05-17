@@ -5,18 +5,18 @@ datasets/ds-a-open-rebar-v1/valid/labels/*
 datasets/ds-a-open-rebar-v1/test/images/*
 datasets/ds-a-open-rebar-v1/test/labels/*
 
-datasets/sam3_annotation_with_open_source_rebar/train/images/*
-datasets/sam3_annotation_with_open_source_rebar/train/labels/*
-datasets/sam3_annotation_with_open_source_rebar/valid/images/*
-datasets/sam3_annotation_with_open_source_rebar/valid/labels/*
-datasets/sam3_annotation_with_open_source_rebar/test/images/*
-datasets/sam3_annotation_with_open_source_rebar/test/labels/*
+datasets/ds-b-custom-sam3-v1/train/images/*
+datasets/ds-b-custom-sam3-v1/train/labels/*
+datasets/ds-b-custom-sam3-v1/valid/images/*
+datasets/ds-b-custom-sam3-v1/valid/labels/*
+datasets/ds-b-custom-sam3-v1/test/images/*
+datasets/ds-b-custom-sam3-v1/test/labels/*
 
-datasets/open_source_rebar_segmentation/train/images/*
-datasets/open_source_rebar_segmentation/train/labels/*
-datasets/open_source_rebar_segmentation/valid/images/*
-datasets/open_source_rebar_segmentation/valid/labels/*
-datasets/open_source_rebar_segmentation/test/images/*
-datasets/open_source_rebar_segmentation/test/labels/*
+datasets/ds-c-open-sam3-v1/train/images/*
+datasets/ds-c-open-sam3-v1/train/labels/*
+datasets/ds-c-open-sam3-v1/valid/images/*
+datasets/ds-c-open-sam3-v1/valid/labels/*
+datasets/ds-c-open-sam3-v1/test/images/*
+datasets/ds-c-open-sam3-v1/test/labels/*
 
 rebar-segementation-yolo26/results/*
