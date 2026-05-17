@@ -96,7 +96,7 @@ Use the same training settings for every baseline run:
 - Model: `yolo26x-seg.pt`
 - Epochs: `50`
 - Image size: `640`
-- Batch: `4`
+- Batch: `16`
 - Device: `auto`
 - Project: `rebar-segementation-yolo26/results`
 - Patience: `30`
@@ -110,7 +110,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-aug0-v1 \
@@ -123,7 +123,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-aug1-v1 \
@@ -139,7 +139,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-b-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-b-aug0-v1 \
@@ -152,7 +152,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-b-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-b-aug1-v1 \
@@ -168,7 +168,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-c-aug0-v1 \
@@ -181,7 +181,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-c-aug1-v1 \
@@ -197,7 +197,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-b-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-b-aug0-v1 \
@@ -210,7 +210,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-b-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-b-aug1-v1 \
@@ -226,7 +226,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-c-aug0-v1 \
@@ -239,7 +239,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-c-aug1-v1 \
@@ -255,7 +255,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-b-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-b-c-aug0-v1 \
@@ -268,7 +268,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-b-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-b-c-aug1-v1 \
@@ -284,7 +284,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-b-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-b-c-aug0-v1 \
@@ -297,7 +297,7 @@ python rebar-segementation-yolo26/train.py \
   --data datasets/baseline-a-b-c-v1/data.yaml \
   --epochs 50 \
   --imgsz 640 \
-  --batch 4 \
+  --batch 16 \
   --device auto \
   --project rebar-segementation-yolo26/results \
   --name yolo26x-baseline-a-b-c-aug1-v1 \
